@@ -61,6 +61,7 @@ export type Settings = {
   fontSize: FontSize;
   zoomDefault: ZoomModes;
   invertColors: boolean;
+  verticalScrolling: boolean;
   volumeDefaults: VolumeDefaults;
   ankiConnectSettings: AnkiConnectSettings;
 };
@@ -89,6 +90,7 @@ const defaultSettings: Settings = {
   fontSize: 'auto',
   zoomDefault: 'zoomFitToScreen',
   invertColors: false,
+  verticalScrolling: false,
   volumeDefaults: {
     singlePageView: false,
     rightToLeft: true,

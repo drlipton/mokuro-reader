@@ -14,7 +14,8 @@
     { key: 'mobile', text: 'Mobile', value: $settings.mobile },
     { key: 'showTimer', text: 'Show timer', value: $settings.showTimer },
     { key: 'quickActions', text: 'Show quick actions', value: $settings.quickActions },
-    { key: 'invertColors', text: 'Invert colors of the images', value: $settings.invertColors }
+    { key: 'invertColors', text: 'Invert colors of the images', value: $settings.invertColors },
+    { key: 'verticalScrolling', text: 'Vertical Scrolling', value: $settings.verticalScrolling }
   ] as { key: SettingsKey; text: string; value: any }[];
 </script>
 

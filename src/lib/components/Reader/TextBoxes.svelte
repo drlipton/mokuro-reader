@@ -6,6 +6,8 @@
 
   export let page: Page;
   export let src: File;
+  export let scaleFactor: number = 1;
+  export let isVertical: boolean = false;
 
   $: textBoxes = page.blocks
     .map((block) => {
@@ -23,12 +25,15 @@
       const height = ymax - ymin;
       const area = width * height;
 
+      const scaledFontSize = $settings.fontSize === 'auto' ? font_size * scaleFactor : parseFloat($settings.fontSize);
+      const finalFontSizeUnit = $settings.fontSize === 'auto' ? 'px' : 'pt';
+
       const textBox = {
-        left: `${xmin}px`,
-        top: `${ymin}px`,
-        width: `${width}px`,
-        height: `${height}px`,
-        fontSize: $settings.fontSize === 'auto' ? `${font_size}px` : `${$settings.fontSize}pt`,
+        left: `${xmin * scaleFactor}px`,
+        top: `${ymin * scaleFactor}px`,
+        width: `${width * scaleFactor}px`,
+        height: `${height * scaleFactor}px`,
+        fontSize: `${scaledFontSize}${finalFontSizeUnit}`,
         writingMode: vertical ? 'vertical-rl' : 'horizontal-tb',
         lines,
         area
@@ -39,14 +44,12 @@
     .sort(({ area: a }, { area: b }) => {
       return b - a;
     });
-
   $: fontWeight = $settings.boldFont ? 'bold' : '400';
   $: display = $settings.displayOCR ? 'block' : 'none';
   $: border = $settings.textBoxBorders ? '1px solid red' : 'none';
   $: contenteditable = $settings.textEditable;
 
   $: triggerMethod = $settings.ankiConnectSettings.triggerMethod || 'both';
-
   async function onUpdateCard(lines: string[]) {
     if ($settings.ankiConnectSettings.enabled) {
       const sentence = lines.join(' ');
