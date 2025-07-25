@@ -58,7 +58,7 @@
 		: `${page} / ${pages?.length}`;
 	$: charDisplay = `${charCount} / ${maxCharCount}`;
 
-	const PAGE_BUFFER = 4; // Number of pages to load before and after the current one
+	const PAGE_BUFFER = 1; // Number of pages to load before and after the current one
 
 	// --- Lifecycle Hooks ---
 	onMount(() => {
@@ -373,12 +373,14 @@
 		<div class="vertical-scrolling-container">
 			{#each pages as p, i (p.img_path)}
 				<div class="page-container" data-page-index={i}>
-					<MangaPage
-						page={p}
-						src={Object.values(volume?.files)[i]}
-						isVertical={true}
-						isVisible={pageVisibility[i]}
-					/>
+					{#if pageVisibility[i]}
+						<MangaPage page={p} src={Object.values(volume?.files)[i]} isVertical={true} />
+					{:else}
+						<div
+							style:height={`calc(100vw / ${p.img_width / p.img_height})`}
+							style:width={'100vw'}
+						/>
+					{/if}
 				</div>
 			{/each}
 		</div>

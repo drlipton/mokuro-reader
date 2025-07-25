@@ -9,7 +9,6 @@
 	export let page: Page;
 	export let src: File;
 	export let isVertical = false;
-	export let isVisible = true; // For lazy loading in vertical scroll mode
 
 	let imageUrl: string | undefined;
 	let loading = true;
@@ -22,10 +21,6 @@
 	let cropOffsetY = 0;
 	let croppedWidth = page.img_width;
 	let croppedHeight = page.img_height;
-
-	$: if (src && isVisible) {
-		updateImage(src);
-	}
 
 	async function updateImage(sourceFile: File) {
 		console.log(`Processing page: ${page.img_path}`);
@@ -64,6 +59,9 @@
 	}
 
 	onMount(() => {
+		if (src) {
+			updateImage(src);
+		}
 		if (containerEl) {
 			panzoom = zoomDefault(containerEl);
 		}
@@ -76,6 +74,7 @@
 		if (imageUrl) {
 			URL.revokeObjectURL(imageUrl);
 		}
+		console.log(`Unloaded page: ${page.img_path}`);
 	});
 
 	$: aspectRatio = croppedWidth / croppedHeight;
