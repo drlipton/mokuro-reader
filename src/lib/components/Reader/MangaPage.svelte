@@ -28,6 +28,7 @@
 	}
 
 	async function updateImage(sourceFile: File) {
+		console.log(`Processing page: ${page.img_path}`);
 		loading = true;
 		if (imageUrl) {
 			URL.revokeObjectURL(imageUrl);
@@ -52,6 +53,7 @@
 			resetCrop();
 		}
 		loading = false;
+		console.log(`Finished processing page: ${page.img_path}`);
 	}
 
 	function resetCrop() {
@@ -77,7 +79,11 @@
 	});
 
 	$: aspectRatio = croppedWidth / croppedHeight;
-	$: scaleFactor = containerWidth / croppedWidth;
+	// In vertical mode, scale to fit width. In horizontal mode, use a 1x scale initially.
+	$: scaleFactor = isVertical ? containerWidth / croppedWidth : 1;
+	// Calculate the offset of the centered background image for horizontal mode.
+	$: containerImageOffsetX = isVertical ? 0 : (page.img_width - croppedWidth) / 2;
+	$: containerImageOffsetY = isVertical ? 0 : (page.img_height - croppedHeight) / 2;
 </script>
 
 <div
@@ -90,7 +96,16 @@
 	style:background-image={imageUrl && !loading ? `url(${imageUrl})` : 'none'}
 >
 	{#if !loading && src}
-		<TextBoxes {page} {src} {scaleFactor} {isVertical} {cropOffsetX} {cropOffsetY} />
+		<TextBoxes
+			{page}
+			{src}
+			{scaleFactor}
+			{isVertical}
+			{cropOffsetX}
+			{cropOffsetY}
+			{containerImageOffsetX}
+			{containerImageOffsetY}
+		/>
 	{/if}
 </div>
 

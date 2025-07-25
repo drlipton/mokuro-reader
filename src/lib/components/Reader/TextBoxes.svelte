@@ -3,19 +3,21 @@
 	import type { Page } from '$lib/types';
 	import { settings } from '$lib/settings';
 	import { imageToWebp, showCropper, updateLastCard } from '$lib/anki-connect';
+	import { promptConfirmation } from '$lib/util';
 
 	export let page: Page;
 	export let src: File;
-	export let scaleFactor: number = 1;
-	export let isVertical: boolean = false;
+	export let scaleFactor = 1;
+	export let isVertical = false;
 	// Accept the crop offsets
 	export let cropOffsetX = 0;
 	export let cropOffsetY = 0;
+	// Accept the container offsets for horizontal mode
+	export let containerImageOffsetX = 0;
+	export let containerImageOffsetY = 0;
 
-	// This is the original logic from your file
 	$: textBoxes = page.blocks
 		.map((block) => {
-			// Ensure the block has a 'box' property before processing
 			if (!block.box) {
 				return null;
 			}
@@ -38,9 +40,9 @@
 			const finalFontSizeUnit = $settings.fontSize === 'auto' ? 'px' : 'pt';
 
 			const textBox = {
-				// HERE IS THE FIX: We subtract the offsets before applying the scale factor
-				left: `${(xmin - cropOffsetX) * scaleFactor}px`,
-				top: `${(ymin - cropOffsetY) * scaleFactor}px`,
+				// Add container offset for correct positioning in horizontal mode
+				left: `${containerImageOffsetX + (xmin - cropOffsetX) * scaleFactor}px`,
+				top: `${containerImageOffsetY + (ymin - cropOffsetY) * scaleFactor}px`,
 				width: `${width * scaleFactor}px`,
 				height: `${height * scaleFactor}px`,
 				fontSize: `${scaledFontSize}${finalFontSizeUnit}`,
@@ -51,31 +53,27 @@
 
 			return textBox;
 		})
-		// Filter out any null blocks that were skipped
 		.filter(Boolean)
 		.sort(({ area: a }, { area: b }) => {
 			return b - a;
 		});
 
-	// All the remaining logic is from your original file
 	$: fontWeight = $settings.boldFont ? 'bold' : '400';
 	$: display = $settings.displayOCR ? 'block' : 'none';
 	$: border = $settings.textBoxBorders ? '1px solid red' : 'none';
 	$: contenteditable = $settings.textEditable;
-
 	$: triggerMethod = $settings.ankiConnectSettings.triggerMethod || 'both';
+
 	async function onUpdateCard(lines: string[]) {
 		if ($settings.ankiConnectSettings.enabled) {
 			const sentence = lines.join(' ');
 			if ($settings.ankiConnectSettings.cropImage) {
 				showCropper(URL.createObjectURL(src), sentence);
 			} else {
-				// This import was missing from your original file, so I am commenting it out.
-				// If you need it, ensure `promptConfirmation` is exported from `$lib/util`.
-				// promptConfirmation('Add image to last created anki card?', async () => {
-				//   const imageData = await imageToWebp(src, $settings);
-				//   updateLastCard(imageData, sentence);
-				// });
+				promptConfirmation('Add image to last created anki card?', async () => {
+					const imageData = await imageToWebp(src, $settings);
+					updateLastCard(imageData, sentence);
+				});
 			}
 		}
 	}
@@ -119,7 +117,6 @@
 {/each}
 
 <style>
-	/* Styles from your original file */
 	.textBox {
 		color: black;
 		padding: 0;

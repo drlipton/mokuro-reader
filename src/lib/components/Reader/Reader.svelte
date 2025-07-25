@@ -58,6 +58,8 @@
 		: `${page} / ${pages?.length}`;
 	$: charDisplay = `${charCount} / ${maxCharCount}`;
 
+	const PAGE_BUFFER = 4; // Number of pages to load before and after the current one
+
 	// --- Lifecycle Hooks ---
 	onMount(() => {
 		if ($settings.defaultFullscreen) {
@@ -85,6 +87,25 @@
 		fireReaderClosedEvent();
 	});
 
+	// --- Reactive Visibility Window ---
+	$: {
+		const newVisibility = Array(pages.length).fill(false);
+		if ($settings.verticalScrolling) {
+			const startIndex = Math.max(0, index - PAGE_BUFFER);
+			const endIndex = Math.min(pages.length - 1, index + PAGE_BUFFER);
+			for (let i = startIndex; i <= endIndex; i++) {
+				newVisibility[i] = true;
+			}
+		} else {
+			// Horizontal mode only needs current and possibly next page
+			newVisibility[index] = true;
+			if (showSecondPage()) {
+				newVisibility[index + 1] = true;
+			}
+		}
+		pageVisibility = newVisibility;
+	}
+
 	// --- Functions ---
 	function initializeVerticalScrolling() {
 		const pageElements = document.querySelectorAll('.page-container');
@@ -95,7 +116,7 @@
 			currentPageElement.scrollIntoView({ block: 'start', behavior: 'instant' });
 		}
 
-		const options = { root: null, rootMargin: '500px 0px', threshold: 0.1 };
+		const options = { root: null, rootMargin: '0px', threshold: 0.5 };
 		observer = new IntersectionObserver(handleIntersect, options);
 		pageElements.forEach((target) => observer.observe(target));
 		verticalScrollingInitialized = true;
@@ -107,25 +128,27 @@
 	}
 
 	function handleIntersect(entries: IntersectionObserverEntry[]) {
-		entries.forEach((entry) => {
-			const pageIndex = parseInt(entry.target.getAttribute('data-page-index') || '0');
-			if (entry.isIntersecting) {
-				if (!pageVisibility[pageIndex]) {
-					pageVisibility[pageIndex] = true;
-					pageVisibility = [...pageVisibility]; // Trigger reactivity
-				}
+		const intersectingEntries = entries.filter((e) => e.isIntersecting);
+		if (intersectingEntries.length === 0) return;
 
-				const newPage = pageIndex + 1;
-				if (page !== newPage) {
-					updateProgress(
-						volume!.mokuroData.volume_uuid,
-						newPage,
-						getCharCount(pages, newPage).charCount,
-						newPage >= pages.length - 1
-					);
-				}
+		const mostVisibleEntry = intersectingEntries.reduce((prev, current) =>
+			prev.intersectionRatio > current.intersectionRatio ? prev : current
+		);
+
+		if (mostVisibleEntry) {
+			const mostVisibleIndex = parseInt(
+				mostVisibleEntry.target.getAttribute('data-page-index') || '0'
+			);
+			const newPage = mostVisibleIndex + 1;
+			if (page !== newPage) {
+				updateProgress(
+					volume!.mokuroData.volume_uuid,
+					newPage,
+					getCharCount(pages, newPage).charCount,
+					newPage >= pages.length - 1
+				);
 			}
-		});
+		}
 	}
 
 	const showSecondPage = () => {
@@ -431,5 +454,7 @@
 		display: flex;
 		justify-content: center;
 		padding-bottom: 0px;
+		/* Each page container needs a minimum height to be observable before the image loads */
+		min-height: 500px;
 	}
 </style>
