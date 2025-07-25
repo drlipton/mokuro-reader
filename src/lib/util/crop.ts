@@ -62,7 +62,7 @@ function getWhiteRight(imgData: ImageData, sillValue: number): number {
 export function cropImageBorder(
 	blob: Blob,
 	sillValue = 98
-): Promise<{ blob: Blob; x: number; y: number }> {
+): Promise<{ blob: Blob; x: number; y: number; newWidth: number; newHeight: number }> {
 	return new Promise((resolve, reject) => {
 		const canvas = document.createElement('canvas');
 		const ctx = canvas.getContext('2d');
@@ -89,7 +89,7 @@ export function cropImageBorder(
 			const newHeight = img.height - (borderTop + borderBottom);
 
 			if (newWidth <= 0 || newHeight <= 0 || (newWidth === img.width && newHeight === img.height)) {
-				resolve({ blob, x: 0, y: 0 });
+				resolve({ blob, x: 0, y: 0, newWidth: img.width, newHeight: img.height });
 				URL.revokeObjectURL(objectUrl);
 				return;
 			}
@@ -100,9 +100,9 @@ export function cropImageBorder(
 
 			canvas.toBlob((outputBlob) => {
 				if (outputBlob) {
-					resolve({ blob: outputBlob, x: borderLeft, y: borderTop });
+					resolve({ blob: outputBlob, x: borderLeft, y: borderTop, newWidth, newHeight });
 				} else {
-					resolve({ blob, x: 0, y: 0 });
+					resolve({ blob, x: 0, y: 0, newWidth: img.width, newHeight: img.height });
 				}
 				URL.revokeObjectURL(objectUrl);
 			}, blob.type);

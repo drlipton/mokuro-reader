@@ -9,17 +9,21 @@
 	export let page: Page;
 	export let src: File;
 	export let isVertical = false;
+	export let isVisible = true; // For lazy loading in vertical scroll mode
 
 	let imageUrl: string | undefined;
 	let loading = true;
 	let containerEl: HTMLDivElement;
 	let containerWidth: number;
 	let panzoom: PanzoomObject | null = null;
-	// Add state for crop offsets
+
+	// State for crop offsets and new dimensions
 	let cropOffsetX = 0;
 	let cropOffsetY = 0;
+	let croppedWidth = page.img_width;
+	let croppedHeight = page.img_height;
 
-	$: if (src) {
+	$: if (src && isVisible) {
 		updateImage(src);
 	}
 
@@ -31,24 +35,30 @@
 		if ($settings.autoCrop) {
 			try {
 				const { cropImageBorder } = await import('$lib/util/crop');
-				// Destructure the blob and the new x, y offsets
-				const { blob: croppedBlob, x, y } = await cropImageBorder(sourceFile);
+				const { blob: croppedBlob, x, y, newWidth, newHeight } = await cropImageBorder(sourceFile);
 				imageUrl = URL.createObjectURL(croppedBlob);
 				cropOffsetX = x;
 				cropOffsetY = y;
+				croppedWidth = newWidth;
+				croppedHeight = newHeight;
 			} catch (error) {
 				console.error('Failed to crop image, falling back to original.', error);
 				imageUrl = URL.createObjectURL(sourceFile);
-				cropOffsetX = 0;
-				cropOffsetY = 0;
+				resetCrop();
 			}
 		} else {
 			// If not cropping, use original image and reset offsets
 			imageUrl = URL.createObjectURL(sourceFile);
-			cropOffsetX = 0;
-			cropOffsetY = 0;
+			resetCrop();
 		}
 		loading = false;
+	}
+
+	function resetCrop() {
+		cropOffsetX = 0;
+		cropOffsetY = 0;
+		croppedWidth = page.img_width;
+		croppedHeight = page.img_height;
 	}
 
 	onMount(() => {
@@ -66,8 +76,8 @@
 		}
 	});
 
-	$: aspectRatio = page.img_width / page.img_height;
-	$: scaleFactor = containerWidth / page.img_width;
+	$: aspectRatio = croppedWidth / croppedHeight;
+	$: scaleFactor = containerWidth / croppedWidth;
 </script>
 
 <div
