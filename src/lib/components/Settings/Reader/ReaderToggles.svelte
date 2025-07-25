@@ -15,7 +15,8 @@
     { key: 'showTimer', text: 'Show timer', value: $settings.showTimer },
     { key: 'quickActions', text: 'Show quick actions', value: $settings.quickActions },
     { key: 'invertColors', text: 'Invert colors of the images', value: $settings.invertColors },
-    { key: 'verticalScrolling', text: 'Vertical Scrolling', value: $settings.verticalScrolling }
+    { key: 'verticalScrolling', text: 'Vertical Scrolling', value: $settings.verticalScrolling },
+    { key: 'autoCrop', text: 'Auto-crop borders', value: $settings.autoCrop },
   ] as { key: SettingsKey; text: string; value: any }[];
 </script>
 
