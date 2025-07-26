@@ -1,4 +1,4 @@
-<script lang="ts">
+ <script lang="ts">
 	import type { Page } from '$lib/types';
 	import { onMount, onDestroy } from 'svelte';
 	import TextBoxes from './TextBoxes.svelte';
@@ -7,7 +7,7 @@
 	import type { PanzoomObject } from '@panzoom/panzoom';
 
 	export let page: Page;
-	export let src: File;
+	export let src: File | string;
 	export let isVertical = false;
 
 	let imageUrl: string | undefined;
@@ -15,6 +15,7 @@
 	let containerEl: HTMLDivElement;
 	let containerWidth: number;
 	let panzoom: PanzoomObject | null = null;
+	let sourceFile: File | Blob | null = null;
 
 	// State for crop offsets and new dimensions
 	let cropOffsetX = 0;
@@ -22,7 +23,32 @@
 	let croppedWidth = page.img_width;
 	let croppedHeight = page.img_height;
 
-	async function updateImage(sourceFile: File) {
+	onMount(() => {
+		if (src) {
+			handleSource();
+		}
+		if (containerEl) {
+			panzoom = zoomDefault(containerEl);
+		}
+	});
+
+	async function handleSource() {
+		if (typeof src === 'string') {
+			try {
+				const response = await fetch(src);
+				sourceFile = await response.blob();
+				await updateImage(sourceFile);
+			} catch (error) {
+				console.error(`Failed to fetch image from URL: ${src}`, error);
+				loading = false;
+			}
+		} else {
+			sourceFile = src;
+			await updateImage(sourceFile);
+		}
+	}
+
+	async function updateImage(file: File | Blob) {
 		console.log(`Processing page: ${page.img_path}`);
 		loading = true;
 		if (imageUrl) {
@@ -31,7 +57,7 @@
 		if ($settings.autoCrop) {
 			try {
 				const { cropImageBorder } = await import('$lib/util/crop');
-				const { blob: croppedBlob, x, y, newWidth, newHeight } = await cropImageBorder(sourceFile);
+				const { blob: croppedBlob, x, y, newWidth, newHeight } = await cropImageBorder(file);
 				imageUrl = URL.createObjectURL(croppedBlob);
 				cropOffsetX = x;
 				cropOffsetY = y;
@@ -39,12 +65,11 @@
 				croppedHeight = newHeight;
 			} catch (error) {
 				console.error('Failed to crop image, falling back to original.', error);
-				imageUrl = URL.createObjectURL(sourceFile);
+				imageUrl = URL.createObjectURL(file);
 				resetCrop();
 			}
 		} else {
-			// If not cropping, use original image and reset offsets
-			imageUrl = URL.createObjectURL(sourceFile);
+			imageUrl = URL.createObjectURL(file);
 			resetCrop();
 		}
 		loading = false;
@@ -58,15 +83,6 @@
 		croppedHeight = page.img_height;
 	}
 
-	onMount(() => {
-		if (src) {
-			updateImage(src);
-		}
-		if (containerEl) {
-			panzoom = zoomDefault(containerEl);
-		}
-	});
-
 	onDestroy(() => {
 		if (panzoom) {
 			panzoom.destroy();
@@ -78,9 +94,7 @@
 	});
 
 	$: aspectRatio = croppedWidth / croppedHeight;
-	// In vertical mode, scale to fit width. In horizontal mode, use a 1x scale initially.
 	$: scaleFactor = isVertical ? containerWidth / croppedWidth : 1;
-	// Calculate the offset of the centered background image for horizontal mode.
 	$: containerImageOffsetX = isVertical ? 0 : (page.img_width - croppedWidth) / 2;
 	$: containerImageOffsetY = isVertical ? 0 : (page.img_height - croppedHeight) / 2;
 </script>
@@ -94,12 +108,11 @@
 	style:height={isVertical ? `calc(100vw / ${aspectRatio})` : `${page.img_height}px`}
 	style:background-image={imageUrl && !loading ? `url(${imageUrl})` : 'none'}
 >
-	{#if !loading && src}
+	{#if !loading && sourceFile}
 		<TextBoxes
-			{page}
-			{src}
+			page={page}
+			src={sourceFile}
 			{scaleFactor}
-			{isVertical}
 			{cropOffsetX}
 			{cropOffsetY}
 			{containerImageOffsetX}

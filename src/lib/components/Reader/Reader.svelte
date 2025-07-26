@@ -15,17 +15,19 @@
 		ChervonDoubleLeftSolid,
 		ChervonDoubleRightSolid,
 		ChevronLeftSolid,
-		ChevronRightSolid
+		ChevronRightSolid,
+		HomeSolid
 	} from 'flowbite-svelte-icons';
 	import Cropper from './Cropper.svelte';
 	import { page as pageStore } from '$app/stores';
 	import SettingsButton from './SettingsButton.svelte';
 	import { getCharCount } from '$lib/util/count-chars';
 	import QuickActions from './QuickActions.svelte';
-	import { beforeNavigate } from '$app/navigation';
-	import { onMount, onDestroy, afterUpdate } from 'svelte';
-	import type { Page } from '$lib/types';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
+	import type { Page, Volume } from '$lib/types';
 
+	export let loadedVolume: Volume;
 	export let volumeSettings: VolumeSettings;
 
 	// Component State
@@ -36,14 +38,12 @@
 	let manualPage = 1;
 	let observer: IntersectionObserver;
 	let verticalScrollingInitialized = false;
+	let initialScrollDone = false;
 	let pageVisibility: boolean[] = [];
 
 	// Derived State
-	$: volume = $catalog
-		?.find((item) => item.id === $pageStore.params.manga)
-		?.manga.find((item) => item.mokuroData.volume_uuid === $pageStore.params.volume);
-	$: pages = volume?.mokuroData.pages || [];
-	$: page = $progress?.[volume?.mokuroData.volume_uuid || ''] || 1;
+	$: pages = loadedVolume?.mokuroData.pages || [];
+	$: page = $progress?.[loadedVolume?.mokuroData.volume_uuid || ''] || 1;
 	$: index = page - 1;
 	$: navAmount =
 		volumeSettings.singlePageView ||
@@ -58,7 +58,7 @@
 		: `${page} / ${pages?.length}`;
 	$: charDisplay = `${charCount} / ${maxCharCount}`;
 
-	const PAGE_BUFFER = 1; // Number of pages to load before and after the current one
+	const PAGE_BUFFER = 1;
 
 	// --- Lifecycle Hooks ---
 	onMount(() => {
@@ -87,7 +87,7 @@
 		fireReaderClosedEvent();
 	});
 
-	// --- Reactive Visibility Window ---
+	// --- Reactive Logic ---
 	$: {
 		const newVisibility = Array(pages.length).fill(false);
 		if ($settings.verticalScrolling) {
@@ -97,7 +97,6 @@
 				newVisibility[i] = true;
 			}
 		} else {
-			// Horizontal mode only needs current and possibly next page
 			newVisibility[index] = true;
 			if (showSecondPage()) {
 				newVisibility[index + 1] = true;
@@ -106,14 +105,21 @@
 		pageVisibility = newVisibility;
 	}
 
+	$: if (loadedVolume) {
+		initialScrollDone = false;
+		verticalScrollingInitialized = false;
+	}
+
 	// --- Functions ---
-	function initializeVerticalScrolling() {
+	async function initializeVerticalScrolling() {
+		await tick();
 		const pageElements = document.querySelectorAll('.page-container');
 		if (pageElements.length === 0) return;
 
 		const currentPageElement = document.querySelector(`[data-page-index="${index}"]`);
-		if (currentPageElement) {
+		if (currentPageElement && !initialScrollDone) {
 			currentPageElement.scrollIntoView({ block: 'start', behavior: 'instant' });
+			initialScrollDone = true;
 		}
 
 		const options = { root: null, rootMargin: '0px', threshold: 0.5 };
@@ -125,6 +131,7 @@
 	function cleanupVerticalScrolling() {
 		if (observer) observer.disconnect();
 		verticalScrollingInitialized = false;
+		initialScrollDone = false;
 	}
 
 	function handleIntersect(entries: IntersectionObserverEntry[]) {
@@ -142,7 +149,7 @@
 			const newPage = mostVisibleIndex + 1;
 			if (page !== newPage) {
 				updateProgress(
-					volume!.mokuroData.volume_uuid,
+					loadedVolume!.mokuroData.volume_uuid,
 					newPage,
 					getCharCount(pages, newPage).charCount,
 					newPage >= pages.length - 1
@@ -176,13 +183,13 @@
 		const end = new Date();
 		const clickDuration = ignoreTimeout ? 0 : end.getTime() - start?.getTime();
 
-		if (pages && volume && clickDuration < 200) {
+		if (pages && loadedVolume && clickDuration < 200) {
 			if (showSecondPage() && page + 1 === pages.length && newPage > page) {
 				return;
 			}
 			const pageClamped = clamp(newPage, 1, pages.length);
 			updateProgress(
-				volume.mokuroData.volume_uuid,
+				loadedVolume.mokuroData.volume_uuid,
 				pageClamped,
 				getCharCount(pages, pageClamped).charCount,
 				pageClamped >= pages.length - 1
@@ -278,11 +285,11 @@
 	}
 
 	function fireReaderClosedEvent() {
-		if (volume) {
+		if (loadedVolume) {
 			const { charCount, lineCount } = getCharCount(pages, page);
 			fireExstaticEvent('mokuro-reader:reader.closed', {
-				title: volume.mokuroData.title,
-				volumeName: volume.mokuroData.volume,
+				title: loadedVolume.mokuroData.title,
+				volumeName: loadedVolume.mokuroData.volume,
 				currentCharCount: charCount,
 				currentPage: page,
 				totalPages: pages.length,
@@ -294,11 +301,11 @@
 	}
 
 	$: {
-		if (volume) {
+		if (loadedVolume) {
 			const { charCount, lineCount } = getCharCount(pages, page);
 			fireExstaticEvent('mokuro-reader:page.change', {
-				title: volume.mokuroData.title,
-				volumeName: volume.mokuroData.volume,
+				title: loadedVolume.mokuroData.title,
+				volumeName: loadedVolume.mokuroData.volume,
 				currentCharCount: charCount,
 				currentPage: page,
 				totalPages: pages.length,
@@ -317,17 +324,23 @@
 	on:touchend={$settings.verticalScrolling ? null : handlePointerUp}
 />
 <svelte:head>
-	<title>{volume?.mokuroData.volume || 'Volume'}</title>
+	<title>{loadedVolume?.mokuroData.volume || 'Volume'}</title>
 </svelte:head>
 
-{#if volume && pages}
+{#if loadedVolume && pages}
 	<SettingsButton />
+	<button
+		on:click={() => goto('/')}
+		class="hover:text-primary-700 hover:mix-blend-normal mix-blend-difference z-50 fixed opacity-50 hover:opacity-100 left-10 top-5 p-10 m-[-2.5rem]"
+	>
+		<HomeSolid />
+	</button>
 	<Cropper />
 	<QuickActions
 		{left}
 		{right}
-		src1={Object.values(volume?.files)[index]}
-		src2={!volumeSettings.singlePageView ? Object.values(volume?.files)[index + 1] : undefined}
+		src1={Object.values(loadedVolume?.files)[index]}
+		src2={!volumeSettings.singlePageView ? Object.values(loadedVolume?.files)[index + 1] : undefined}
 		isVertical={$settings.verticalScrolling}
 	/>
 	<Popover placement="bottom" trigger="click" triggeredBy="#page-num" class="z-20 w-full max-w-xs">
@@ -364,7 +377,7 @@
 			</div>
 		</div>
 	</Popover>
-	<button class="absolute opacity-50 left-5 top-5 z-10 mix-blend-difference" id="page-num">
+	<button class="absolute opacity-50 left-28 top-5 z-10 mix-blend-difference" id="page-num">
 		<p class="text-left" class:hidden={!$settings.charCount}>{charDisplay}</p>
 		<p class="text-left" class:hidden={!$settings.pageNum}>{pageDisplay}</p>
 	</button>
@@ -374,7 +387,7 @@
 			{#each pages as p, i (p.img_path)}
 				<div class="page-container" data-page-index={i}>
 					{#if pageVisibility[i]}
-						<MangaPage page={p} src={Object.values(volume?.files)[i]} isVertical={true} />
+						<MangaPage page={p} src={Object.values(loadedVolume?.files)[i]} isVertical={true} />
 					{:else}
 						<div
 							style:height={`calc(100vw / ${p.img_width / p.img_height})`}
@@ -419,9 +432,12 @@
 				>
 					{#key page}
 						{#if showSecondPage()}
-							<MangaPage page={pages[index + 1]} src={Object.values(volume?.files)[index + 1]} />
+							<MangaPage
+								page={pages[index + 1]}
+								src={Object.values(loadedVolume?.files)[index + 1]}
+							/>
 						{/if}
-						<MangaPage page={pages[index]} src={Object.values(volume?.files)[index]} />
+						<MangaPage page={pages[index]} src={Object.values(loadedVolume?.files)[index]} />
 					{/key}
 				</div>
 			</Panzoom>

@@ -3,16 +3,14 @@
 	import type { Page } from '$lib/types';
 	import { settings } from '$lib/settings';
 	import { imageToWebp, showCropper, updateLastCard } from '$lib/anki-connect';
-	import { promptConfirmation } from '$lib/util';
+	import { promptConfirmation } from '$lib/util'; // This line was missing
 
 	export let page: Page;
-	export let src: File;
+	export let src: File | Blob; // Can be a local file or a fetched blob
 	export let scaleFactor = 1;
 	export let isVertical = false;
-	// Accept the crop offsets
 	export let cropOffsetX = 0;
 	export let cropOffsetY = 0;
-	// Accept the container offsets for horizontal mode
 	export let containerImageOffsetX = 0;
 	export let containerImageOffsetY = 0;
 
@@ -40,7 +38,6 @@
 			const finalFontSizeUnit = $settings.fontSize === 'auto' ? 'px' : 'pt';
 
 			const textBox = {
-				// Add container offset for correct positioning in horizontal mode
 				left: `${containerImageOffsetX + (xmin - cropOffsetX) * scaleFactor}px`,
 				top: `${containerImageOffsetY + (ymin - cropOffsetY) * scaleFactor}px`,
 				width: `${width * scaleFactor}px`,

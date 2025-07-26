@@ -8,46 +8,47 @@ export function clamp(num: number, min: number, max: number) {
 }
 
 export function isReader() {
-  return get(page).route.id === '/[manga]/[volume]'
+  // This now correctly checks the route ID
+  return get(page).route.id === '/[manga]/[volume]';
 }
 
 let timer: any;
 
 export function debounce(func: () => void, timeout = 50) {
-  if (!timer) {
-    timer = setTimeout(() => {
-      func();
-      clearTimeout(timer);
-      timer = undefined;
-    }, timeout);
-  } else {
-    clearTimeout(timer);
-    timer = undefined;
-  }
+	if (!timer) {
+		timer = setTimeout(() => {
+			func();
+			clearTimeout(timer);
+			timer = undefined;
+		}, timeout);
+	} else {
+		clearTimeout(timer);
+		timer = undefined;
+	}
 }
 
 export function toClipboard() {
-  navigator.clipboard.writeText(
-    'pip3 install git+https://github.com/kha-white/mokuro.git@web-reader'
-  );
-  showSnackbar('Copied to clipboard');
+	navigator.clipboard.writeText(
+		'pip3 install git+https://github.com/kha-white/mokuro.git@web-reader'
+	);
+	showSnackbar('Copied to clipboard');
 }
 
 type ExtaticPayload = {
-  title: string;
-  volumeName: string;
-  currentCharCount: number;
-  totalCharCount: number;
-  currentPage: number;
-  totalPages: number;
-  currentLineCount: number;
-  totalLineCount: number;
-}
+	title: string;
+	volumeName: string;
+	currentCharCount: number;
+	totalCharCount: number;
+	currentPage: number;
+	totalPages: number;
+	currentLineCount: number;
+	totalLineCount: number;
+};
 
-type ExtaticEvent = 'mokuro-reader:page.change' | 'mokuro-reader:reader.closed'
+type ExtaticEvent = 'mokuro-reader:page.change' | 'mokuro-reader:reader.closed';
 
 export function fireExstaticEvent(event: ExtaticEvent, payload: ExtaticPayload) {
-  if (browser) {
-    document.dispatchEvent(new CustomEvent(event, { detail: payload }))
-  }
+	if (browser) {
+		document.dispatchEvent(new CustomEvent(event, { detail: payload }));
+	}
 }
