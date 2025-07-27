@@ -6,13 +6,23 @@ export interface Catalog {
   manga: Volume[];
 }
 
+export interface ThumbnailCache {
+  id: string; // manga name or unique identifier
+  thumbnail: Blob;
+}
+
 export class CatalogDexie extends Dexie {
   catalog!: Table<Catalog>;
+  thumbnails!: Table<ThumbnailCache>;
 
   constructor() {
     super('mokuro');
     this.version(1).stores({
       catalog: 'id, manga'
+    });
+    this.version(2).stores({
+      catalog: 'id, manga',
+      thumbnails: 'id'
     });
   }
 }

@@ -3,17 +3,17 @@
 	import type { Page } from '$lib/types';
 	import { settings } from '$lib/settings';
 	import { imageToWebp, showCropper, updateLastCard } from '$lib/anki-connect';
-	import { promptConfirmation } from '$lib/util'; // This line was missing
+	import { promptConfirmation } from '$lib/util';
+	// This line was missing
 
 	export let page: Page;
-	export let src: File | Blob; // Can be a local file or a fetched blob
+	export let src: File | Blob;
+	// Can be a local file or a fetched blob
 	export let scaleFactor = 1;
-	export let isVertical = false;
 	export let cropOffsetX = 0;
 	export let cropOffsetY = 0;
 	export let containerImageOffsetX = 0;
 	export let containerImageOffsetY = 0;
-
 	$: textBoxes = page.blocks
 		.map((block) => {
 			if (!block.box) {
@@ -40,7 +40,8 @@
 			const textBox = {
 				left: `${containerImageOffsetX + (xmin - cropOffsetX) * scaleFactor}px`,
 				top: `${containerImageOffsetY + (ymin - cropOffsetY) * scaleFactor}px`,
-				width: `${width * scaleFactor}px`,
+				width: 
+					`${width * scaleFactor}px`,
 				height: `${height * scaleFactor}px`,
 				fontSize: `${scaledFontSize}${finalFontSizeUnit}`,
 				writingMode: vertical ? 'vertical-rl' : 'horizontal-tb',
@@ -55,12 +56,13 @@
 			return b - a;
 		});
 
-	$: fontWeight = $settings.boldFont ? 'bold' : '400';
+	$: fontWeight = $settings.boldFont ?
+		'bold' : '400';
 	$: display = $settings.displayOCR ? 'block' : 'none';
-	$: border = $settings.textBoxBorders ? '1px solid red' : 'none';
+	$: border = $settings.textBoxBorders ?
+		'1px solid red' : 'none';
 	$: contenteditable = $settings.textEditable;
 	$: triggerMethod = $settings.ankiConnectSettings.triggerMethod || 'both';
-
 	async function onUpdateCard(lines: string[]) {
 		if ($settings.ankiConnectSettings.enabled) {
 			const sentence = lines.join(' ');

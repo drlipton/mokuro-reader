@@ -26,7 +26,6 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
 	import type { Page, Volume } from '$lib/types';
-
 	export let loadedVolume: Volume;
 	export let volumeSettings: VolumeSettings;
 
@@ -59,7 +58,6 @@
 	$: charDisplay = `${charCount} / ${maxCharCount}`;
 
 	const PAGE_BUFFER = 1;
-
 	// --- Lifecycle Hooks ---
 	onMount(() => {
 		if ($settings.defaultFullscreen) {
@@ -67,7 +65,6 @@
 		}
 		pageVisibility = Array(pages.length).fill(false);
 	});
-
 	afterUpdate(() => {
 		if ($settings.verticalScrolling && pages.length > 0 && !verticalScrollingInitialized) {
 			initializeVerticalScrolling();
@@ -79,7 +76,6 @@
 	onDestroy(() => {
 		cleanupVerticalScrolling();
 	});
-
 	beforeNavigate(() => {
 		if (document.fullscreenElement) {
 			document.exitFullscreen();
@@ -112,20 +108,25 @@
 
 	// --- Functions ---
 	async function initializeVerticalScrolling() {
-		await tick();
+		await tick(); // Wait for Svelte to update the DOM with the visible pages
+
 		const pageElements = document.querySelectorAll('.page-container');
 		if (pageElements.length === 0) return;
 
-		const currentPageElement = document.querySelector(`[data-page-index="${index}"]`);
-		if (currentPageElement && !initialScrollDone) {
-			currentPageElement.scrollIntoView({ block: 'start', behavior: 'instant' });
-			initialScrollDone = true;
-		}
-
+		// Setup the IntersectionObserver
 		const options = { root: null, rootMargin: '0px', threshold: 0.5 };
 		observer = new IntersectionObserver(handleIntersect, options);
 		pageElements.forEach((target) => observer.observe(target));
 		verticalScrollingInitialized = true;
+
+		// Now that the observer is set up, scroll to the current page
+		if (!initialScrollDone) {
+			const currentPageElement = document.querySelector(`[data-page-index="${index}"]`);
+			if (currentPageElement) {
+				currentPageElement.scrollIntoView({ block: 'start', behavior: 'instant' });
+				initialScrollDone = true;
+			}
+		}
 	}
 
 	function cleanupVerticalScrolling() {
@@ -137,7 +138,6 @@
 	function handleIntersect(entries: IntersectionObserverEntry[]) {
 		const intersectingEntries = entries.filter((e) => e.isIntersecting);
 		if (intersectingEntries.length === 0) return;
-
 		const mostVisibleEntry = intersectingEntries.reduce((prev, current) =>
 			prev.intersectionRatio > current.intersectionRatio ? prev : current
 		);
@@ -181,7 +181,8 @@
 
 	function changePage(newPage: number, ignoreTimeout = false) {
 		const end = new Date();
-		const clickDuration = ignoreTimeout ? 0 : end.getTime() - start?.getTime();
+		const clickDuration = ignoreTimeout ?
+			0 : end.getTime() - start?.getTime();
 
 		if (pages && loadedVolume && clickDuration < 200) {
 			if (showSecondPage() && page + 1 === pages.length && newPage > page) {
@@ -320,7 +321,8 @@
 <svelte:window
 	on:resize={$settings.verticalScrolling ? null : zoomDefault}
 	on:keyup={handleShortcuts}
-	on:touchstart={$settings.verticalScrolling ? null : handleTouchStart}
+	on:touchstart={$settings.verticalScrolling ?
+		null : handleTouchStart}
 	on:touchend={$settings.verticalScrolling ? null : handlePointerUp}
 />
 <svelte:head>
@@ -340,7 +342,8 @@
 		{left}
 		{right}
 		src1={Object.values(loadedVolume?.files)[index]}
-		src2={!volumeSettings.singlePageView ? Object.values(loadedVolume?.files)[index + 1] : undefined}
+		src2={!volumeSettings.singlePageView ?
+			Object.values(loadedVolume?.files)[index + 1] : undefined}
 		isVertical={$settings.verticalScrolling}
 	/>
 	<Popover placement="bottom" trigger="click" triggeredBy="#page-num" class="z-20 w-full max-w-xs">
@@ -366,7 +369,8 @@
 					size="sm"
 				/>
 			</div>
-			<div style:direction={volumeSettings.rightToLeft ? 'rtl' : 'ltr'}>
+			<div style:direction={volumeSettings.rightToLeft ?
+				'rtl' : 'ltr'}>
 				<Range
 					min={1}
 					max={pages.length}
@@ -425,7 +429,8 @@
 				<div
 					class="flex flex-row"
 					class:flex-row-reverse={!volumeSettings.rightToLeft}
-					style:filter={`invert(${$settings.invertColors ? 1 : 0})`}
+					style:filter={`invert(${$settings.invertColors ?
+						1 : 0})`}
 					on:dblclick={onDoubleTap}
 					role="none"
 					id="manga-panel"

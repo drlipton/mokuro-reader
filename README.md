@@ -7,7 +7,8 @@ https://github.com/ZXY101/mokuro-reader/assets/39561296/45a214a8-3f69-461c-87d7-
 ## Fork Features:
 - Added support for vertical scrolling
 - Added cropping setting for cropping out white borders
-TODO: Server side manga storage
+- Server side manga storage
+- Read history
 
 ## Features:
 - Stat tracking (volumes read, pages read, characters read & minutes read)

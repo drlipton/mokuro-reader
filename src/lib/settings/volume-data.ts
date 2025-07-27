@@ -21,6 +21,8 @@ type VolumeData = {
   completed: boolean;
   timeReadInMinutes: number,
   settings: VolumeSettings;
+  totalPages?: number;
+  lastRead?: number;
 }
 
 type TotalStats = {
@@ -62,7 +64,8 @@ export function initializeVolume(volume: string) {
           hasCover,
           rightToLeft,
           singlePageView
-        }
+        },
+        lastRead: Date.now()
       }
     };
   });
@@ -87,7 +90,8 @@ export function updateProgress(volume: string, progress: number, chars?: number,
         ...prev?.[volume],
         progress,
         chars: chars || prev?.[volume].chars,
-        completed
+        completed,
+        lastRead: Date.now()
       }
     };
   });

@@ -6,10 +6,17 @@
 	import { GridOutline, SortOutline, ListOutline } from 'flowbite-svelte-icons';
 	import { miscSettings, updateMiscSetting } from '$lib/settings';
 	import CatalogListItem from './CatalogListItem.svelte';
-	import { fetchServerMangaList } from '$lib/catalog/server';
+	import { fetchServerMangaList, fetchServerMangaInfo } from '$lib/catalog/server';
+	import { onMount } from 'svelte';
 
-	// --- Local Catalog Logic ---
-	$: sortedCatalog =
+	// --- Component State ---
+	let search = '';
+	let serverMangaList: { name: string; coverArt?: string; volumeCount?: number }[] | null = null;
+	let isLoadingServerList = false;
+	let serverError: string | null = null;
+
+	// --- Reactive Logic ---
+	$: filteredLocalCatalog =
 		$catalog
 			?.sort((a, b) => {
 				if ($miscSettings.gallerySorting === 'ASC') {
@@ -22,26 +29,39 @@
 				return item.manga[0].mokuroData.title.toLowerCase().indexOf(search.toLowerCase()) !== -1;
 			}) || [];
 
-	let search = '';
-	function onLayout() {
-		updateMiscSetting('galleryLayout', $miscSettings.galleryLayout === 'list' ? 'grid' : 'list');
-	}
-	function onOrder() {
-		updateMiscSetting('gallerySorting', $miscSettings.gallerySorting === 'ASC' ? 'DESC' : 'ASC');
-	}
+	$: filteredServerManga = (serverMangaList || []).filter(item => item.name.toLowerCase().includes(search.toLowerCase()));
 
-	// --- Server Catalog Logic ---
-	let serverMangaList: string[] | null = null;
-	let isLoadingServerList = false;
-	let serverError: string | null = null;
-
+	// --- Data Fetching ---
 	async function loadServerManga() {
 		if ($miscSettings.source === 'server' && $miscSettings.serverUrl) {
 			isLoadingServerList = true;
 			serverError = null;
 			serverMangaList = null;
 			try {
-				serverMangaList = await fetchServerMangaList($miscSettings.serverUrl);
+				const mangaNames = await fetchServerMangaList($miscSettings.serverUrl);
+				serverMangaList = mangaNames.map(name => ({ name }));
+
+				// Asynchronously load cover art and volume counts with failure threshold
+				let consecutiveFailures = 0;
+				const failureThreshold = 3;
+
+				for (const manga of serverMangaList) {
+					if (consecutiveFailures >= failureThreshold) {
+						console.warn('Aborting cover art fetch due to multiple consecutive failures.');
+						break; // Stop fetching more covers
+					}
+
+					const info = await fetchServerMangaInfo($miscSettings.serverUrl, manga.name);
+					if (!info.coverArt) {
+						consecutiveFailures++;
+					} else {
+						consecutiveFailures = 0; // Reset on success
+					}
+					manga.coverArt = info.coverArt;
+					manga.volumeCount = info.volumeCount;
+					serverMangaList = serverMangaList; // Trigger reactivity
+				}
+
 			} catch (error: any) {
 				serverError = error.message || 'Failed to load manga from server.';
 			} finally {
@@ -50,8 +70,22 @@
 		}
 	}
 
-	// Load server manga when the source or URL changes
-	$: if ($miscSettings.source === 'server') {
+	// --- UI Logic ---
+	function onLayout() {
+		updateMiscSetting('galleryLayout', $miscSettings.galleryLayout === 'list' ? 'grid' : 'list');
+	}
+	function onOrder() {
+		updateMiscSetting('gallerySorting', $miscSettings.gallerySorting === 'ASC' ? 'DESC' : 'ASC');
+	}
+
+	// --- Lifecycle ---
+	onMount(() => {
+		if ($miscSettings.source === 'server') {
+			loadServerManga();
+		}
+	});
+
+	$: if ($miscSettings.source === 'server' && !serverMangaList && !isLoadingServerList) {
 		loadServerManga();
 	}
 </script>
@@ -74,35 +108,36 @@
 		</ButtonGroup>
 	</div>
 
+	<div class="flex gap-1 py-2">
+		<Search bind:value={search} />
+		<Button size="sm" color="alternative" on:click={onLayout}>
+			{#if $miscSettings.galleryLayout === 'list'}
+				<GridOutline />
+			{:else}
+				<ListOutline />
+			{/if}
+		</Button>
+		<Button size="sm" color="alternative" on:click={onOrder}>
+			<SortOutline />
+		</Button>
+	</div>
+
 	{#if $miscSettings.source === 'local'}
 		{#if $catalog}
 			{#if $catalog.length > 0}
-				<div class="flex gap-1 py-2">
-					<Search bind:value={search} />
-					<Button size="sm" color="alternative" on:click={onLayout}>
-						{#if $miscSettings.galleryLayout === 'list'}
-							<GridOutline />
-						{:else}
-							<ListOutline />
-						{/if}
-					</Button>
-					<Button size="sm" color="alternative" on:click={onOrder}>
-						<SortOutline />
-					</Button>
-				</div>
-				{#if search && sortedCatalog.length === 0}
+				{#if search && filteredLocalCatalog.length === 0}
 					<div class="text-center p-20">
 						<p>No results found.</p>
 					</div>
 				{:else}
 					<div class="flex sm:flex-row flex-col gap-5 flex-wrap justify-center sm:justify-start">
 						{#if $miscSettings.galleryLayout === 'grid'}
-							{#each sortedCatalog as { id } (id)}
+							{#each filteredLocalCatalog as { id } (id)}
 								<CatalogItem {id} />
 							{/each}
 						{:else}
 							<Listgroup active class="w-full">
-								{#each sortedCatalog as { id } (id)}
+								{#each filteredLocalCatalog as { id } (id)}
 									<CatalogListItem {id} />
 								{/each}
 							</Listgroup>
@@ -119,7 +154,7 @@
 		{/if}
 	{:else if $miscSettings.source === 'server'}
 		<div class="p-2">
-			{#if isLoadingServerList}
+			{#if isLoadingServerList && !serverMangaList}
 				<Loader>Fetching manga list from server...</Loader>
 			{:else if serverError}
 				<div class="text-center p-10 text-red-400">
@@ -127,15 +162,19 @@
 					<p>{serverError}</p>
 				</div>
 			{:else if serverMangaList && serverMangaList.length > 0}
-				<Listgroup active class="w-full">
-					{#each serverMangaList as mangaName (mangaName)}
-						<ListgroupItem>
-							<a href={`/${encodeURIComponent(mangaName)}?source=server`} class="w-full">
-								{mangaName}
-							</a>
-						</ListgroupItem>
-					{/each}
-				</Listgroup>
+				<div class="flex sm:flex-row flex-col gap-5 flex-wrap justify-center sm:justify-start">
+					{#if $miscSettings.galleryLayout === 'grid'}
+						{#each filteredServerManga as { name, coverArt, volumeCount } (name)}
+							<CatalogItem id={name} isRemote={true} remoteCoverUrl={coverArt} {volumeCount} />
+						{/each}
+					{:else}
+						<Listgroup active class="w-full">
+							{#each filteredServerManga as { name, coverArt, volumeCount } (name)}
+								<CatalogListItem id={name} isRemote={true} remoteCoverUrl={coverArt} {volumeCount} />
+							{/each}
+						</Listgroup>
+					{/if}
+				</div>
 			{:else if serverMangaList}
 				<div class="text-center p-10">
 					<p>No manga found on the server.</p>
