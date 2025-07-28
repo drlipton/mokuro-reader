@@ -97,6 +97,7 @@
 			if (showSecondPage()) {
 				newVisibility[index + 1] = true;
 			}
+			newVisibility[index] = true;
 		}
 		pageVisibility = newVisibility;
 	}
@@ -118,15 +119,27 @@
 		observer = new IntersectionObserver(handleIntersect, options);
 		pageElements.forEach((target) => observer.observe(target));
 		verticalScrollingInitialized = true;
+		handleIntersect(
+			Array.from(pageElements).map((el) => ({
+				target: el,
+				isIntersecting: el.getBoundingClientRect().top < window.innerHeight &&
+					el.getBoundingClientRect().bottom > 0,
+				intersectionRatio: 1,
+			}) as IntersectionObserverEntry)
+		);
 
-		// Now that the observer is set up, scroll to the current page
 		if (!initialScrollDone) {
 			const currentPageElement = document.querySelector(`[data-page-index="${index}"]`);
 			if (currentPageElement) {
 				currentPageElement.scrollIntoView({ block: 'start', behavior: 'instant' });
+
+				pageVisibility[index] = true;
+				await tick(); // Ensure reactivity kicks in
 				initialScrollDone = true;
 			}
 		}
+
+
 	}
 
 	function cleanupVerticalScrolling() {
