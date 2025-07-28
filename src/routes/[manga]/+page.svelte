@@ -47,7 +47,38 @@
 		}
 	}
 
-	// --- Download Logic ---
+	// --- Download Logic with Retry using XMLHttpRequest ---
+	function downloadFileAsBlob(url: string): Promise<Blob> {
+		return new Promise((resolve, reject) => {
+			const xhr = new XMLHttpRequest();
+			xhr.open('GET', url);
+			xhr.responseType = 'blob';
+			xhr.onload = () => {
+				if (xhr.status === 200) {
+					resolve(xhr.response);
+				} else {
+					reject(new Error(`Download failed: Status ${xhr.status}`));
+				}
+			};
+			xhr.onerror = () => reject(new Error('Download failed: Network error.'));
+			xhr.onabort = () => reject(new Error('Download aborted.'));
+			xhr.send();
+		});
+	}
+
+	async function downloadWithRetry(url: string, retries = 3, delay = 1000): Promise<Blob> {
+		for (let i = 0; i < retries; i++) {
+			try {
+				const blob = await downloadFileAsBlob(url);
+				return blob;
+			} catch (error) {
+				console.warn(`Attempt ${i + 1} failed for ${url}:`, error);
+			}
+			if (i < retries - 1) await new Promise(res => setTimeout(res, delay));
+		}
+		throw new Error(`Failed to download ${url} after ${retries} attempts.`);
+	}
+
 	async function downloadVolume(volumeName: string) {
 		downloading[volumeName] = true;
 
@@ -57,9 +88,7 @@
 			const encodedVolume = encodeURIComponent(volumeName);
 
 			const mokuroUrl = `${serverUrl}/${encodedManga}/${encodedVolume}.mokuro`;
-			const mokuroRes = await fetch(getProxyUrl(mokuroUrl));
-			if (!mokuroRes.ok) throw new Error(`Could not download .mokuro file for ${volumeName}`);
-			const mokuroBlob = await mokuroRes.blob();
+			const mokuroBlob = await downloadWithRetry(getProxyUrl(mokuroUrl));
 			const mokuroData: MokuroData = JSON.parse(await mokuroBlob.text());
 
 			const mokuroFile = new File([mokuroBlob], `${volumeName}.mokuro`);
@@ -70,9 +99,7 @@
 			const imageBaseUrl = `${serverUrl}/${encodedManga}/${encodedVolume}`;
 			const imagePromises = mokuroData.pages.map(async (page) => {
 				const imageUrl = `${imageBaseUrl}/${page.img_path}`;
-				const imageRes = await fetch(getProxyUrl(imageUrl));
-				if (!imageRes.ok) throw new Error(`Could not download image: ${page.img_path}`);
-				const imageBlob = await imageRes.blob();
+				const imageBlob = await downloadWithRetry(getProxyUrl(imageUrl));
 				const imageFile = new File([imageBlob], page.img_path);
 				Object.defineProperty(imageFile, 'webkitRelativePath', {
 					value: `${mangaName}/${volumeName}/${page.img_path}`

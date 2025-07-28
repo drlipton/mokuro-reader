@@ -38,10 +38,12 @@
       }
     });
   });
+
   let filePromises: Promise<File>[];
   let draggedFiles: File[] | undefined;
   let loading = false;
   $: disabled = loading || (!draggedFiles && !files);
+
   const dropHandle = async (event: DragEvent) => {
     loading = true;
     draggedFiles = [];
@@ -75,10 +77,12 @@
 
     loading = false;
   };
+
   let defaultStyle =
     'flex flex-col justify-center items-center w-full h-64 bg-gray-50 rounded-lg border-2 border-gray-300 border-dashed cursor-pointer dark:hover:bg-bray-800 dark:bg-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-600';
   let highlightStyle =
     'flex flex-col justify-center items-center w-full h-64 bg-gray-50 rounded-lg border-2 border-gray-300 border-dashed cursor-pointer dark:bg-bray-800 dark:bg-gray-700 bg-gray-100 dark:border-gray-600 dark:border-gray-500 dark:bg-gray-600';
+
   let activeStyle = defaultStyle;
 </script>
 
@@ -93,8 +97,7 @@
         <div class="flex flex-col gap-5">
           <div>
             <p>
-              Firstly, ensure that you process your 
-              manga with the <b>0.2.0-beta.6</b> of mokuro, you
+              Firstly, ensure that you process your manga with the <b>0.2.0-beta.6</b> of mokuro, you
               can install it by running the following command:
             </p>
             <div role="none" on:click={toClipboard}>
@@ -126,6 +129,9 @@
         event.preventDefault();
         activeStyle = defaultStyle;
       }}
+      on:click={(event) => {
+        event.preventDefault();
+      }}
       defaultClass={activeStyle}
     >
       <svg
@@ -149,7 +155,7 @@
         </p>
       {:else if draggedFiles && draggedFiles.length > 0}
         <p class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-          Upload {draggedFiles.length}
+          Upload {draggedFiles.length} hih
           {draggedFiles.length > 1 ? 'files' : 'file'}?
         </p>
       {:else if loading}
