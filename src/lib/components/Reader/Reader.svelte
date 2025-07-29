@@ -103,12 +103,24 @@
         }, 3000);
     }
 
-    function toggleControls() {
-        controlsVisible = !controlsVisible;
-        if (controlsVisible) {
-            resetControlsTimeout();
-        }
-    }
+    function handleCentralClick(event: MouseEvent) {
+		// This function is attached to the wrapper, so clicks on side buttons won't trigger it.
+		// Clicks on textboxes will also be stopped by their own handlers.
+		const clickY = event.clientY;
+		const screenHeight = window.innerHeight;
+
+		// Only toggle controls if clicking in the bottom 25% of the screen
+		if (clickY >= screenHeight * 0.75) {
+			controlsVisible = !controlsVisible;
+			if (controlsVisible) {
+				resetControlsTimeout();
+			}
+		} else if (controlsVisible) {
+			// Hide controls if clicking anywhere else while they are visible
+			controlsVisible = false;
+		}
+	}
+
 
 	async function initializeVerticalScrolling() {
 		await tick(); 
@@ -313,7 +325,7 @@
 	<title>{loadedVolume?.mokuroData.volume || 'Volume'}</title>
 </svelte:head>
 
-{#if loadedVolume && pages}
+{#if loadedVolume && pages && pages.length > 0}
 	<Cropper />
 
 	<ReaderControls
@@ -326,29 +338,30 @@
 		src2={!volumeSettings.singlePageView ? Object.values(loadedVolume?.files)[index + 1] : undefined}
 	/>
 
-	<div
-		role="button"
-		tabindex="0"
-		on:click={toggleControls}
-		on:keypress={toggleControls}
-		class="w-full h-full"
-	>
-		{#if $settings.verticalScrolling}
-			<div class="vertical-scrolling-container">
-				{#each pages as p, i (p.img_path)}
-					<div class="page-container" data-page-index={i}>
-						{#if pageVisibility[i]}
-							<MangaPage page={p} src={Object.values(loadedVolume?.files)[i]} isVertical={true} />
-						{:else}
-							<div
-								style:height={`calc(100vw / ${p.img_width / p.img_height})`}
-								style:width={'100vw'}
-							/>
-						{/if}
-					</div>
-				{/each}
-			</div>
-		{:else}
+	{#if $settings.verticalScrolling}
+		<div
+			class="vertical-scrolling-container"
+			on:click={handleCentralClick}
+			on:keydown={(e) => e.key === 'Enter' && handleCentralClick(e)}
+			role="button"
+			tabindex="0"
+		>
+			{#each pages as p, i (p.img_path)}
+				<div class="page-container" data-page-index={i}>
+					{#if pageVisibility[i]}
+						<MangaPage page={p} src={Object.values(loadedVolume?.files)[i]} isVertical={true} />
+					{:else}
+						<div
+							style:height={`calc(100vw / ${p.img_width / p.img_height})`}
+							style:width={'100vw'}
+						/>
+					{/if}
+				</div>
+			{/each}
+		</div>
+	{:else}
+		<div class="relative w-full h-full" on:click={handleCentralClick}>
+			<!-- Main Content (Panzoom, MangaPage etc.) -->
 			<div class="flex" style:background-color={$settings.backgroundColor}>
 				<Panzoom>
 					<div
@@ -371,8 +384,26 @@
 					</div>
 				</Panzoom>
 			</div>
-		{/if}
-	</div>
+
+			<!-- Overlays for page turning with z-index: 10 -->
+			<button
+				class="left-0 top-0 absolute h-full opacity-0 cursor-pointer"
+				style:width={`${$settings.edgeButtonWidth}%`}
+				style="z-index: 10;"
+				on:mousedown={mouseDown}
+				on:mouseup={(e) => { e.stopPropagation(); left(e); }}
+				aria-label="Previous Page"
+			/>
+			<button
+				class="right-0 top-0 absolute h-full opacity-0 cursor-pointer"
+				style:width={`${$settings.edgeButtonWidth}%`}
+				style="z-index: 10;"
+				on:mousedown={mouseDown}
+				on:mouseup={(e) => { e.stopPropagation(); right(e); }}
+				aria-label="Next Page"
+			/>
+		</div>
+	{/if}
 {:else}
 	<div class="fixed z-50 left-1/2 top-1/2">
 		<Spinner />
