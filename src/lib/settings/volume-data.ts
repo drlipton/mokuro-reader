@@ -4,6 +4,8 @@ import { settings, updateSetting, } from './settings';
 import { zoomDefault } from '$lib/panzoom';
 import { page } from '$app/stores';
 import { manga, volume } from '$lib/catalog';
+import { uploadFile } from '$lib/util';
+import { debounce } from '$lib/util';
 
 export type VolumeSettings = {
   rightToLeft: boolean;
@@ -39,6 +41,41 @@ const stored = browser ? window.localStorage.getItem('volumes') : undefined;
 const initial: Volumes = stored && browser ? JSON.parse(stored) : {};
 
 export const volumes = writable<Volumes>(initial);
+
+const performUpload = debounce(() => {
+    if (typeof gapi === 'undefined' || !gapi?.client?.getToken()) {
+        return;
+    }
+    console.log('Sync: Automatic upload triggered...');
+    const { access_token } = gapi.auth.getToken();
+    uploadFile({
+        accessToken: access_token,
+        localStorageId: 'volumes',
+        fileId: localStorage.getItem('volumeDataId') || '',
+        metadata: {
+            name: 'volume-data.json',
+            mimeType: 'application/json',
+            parents: [localStorage.getItem('readerFolderId') || '']
+        },
+        type: 'application/json'
+    }).then(res => {
+        if (res.id) {
+            console.log('Sync: Automatic upload successful.', res);
+            localStorage.setItem('volumeDataId', res.id);
+            localStorage.setItem('lastSyncTime', Date.now().toString());
+        }
+    }).catch(error => {
+        console.error('Sync: Automatic upload failed.', error);
+    });
+}, 3000); 
+
+
+volumes.subscribe((volumes) => {
+  if (browser) {
+    window.localStorage.setItem('volumes', volumes ? JSON.stringify(volumes) : '');
+    performUpload();
+  }
+});
 
 export function initializeVolume(volume: string) {
   const volumeDefaults = get(settings).volumeDefaults;
@@ -111,11 +148,7 @@ export function startCount(volume: string) {
   }, 60 * 1000)
 }
 
-volumes.subscribe((volumes) => {
-  if (browser) {
-    window.localStorage.setItem('volumes', volumes ? JSON.stringify(volumes) : '');
-  }
-});
+
 
 export const progress = derived(volumes, ($volumes) => {
   const progress: Progress = {}

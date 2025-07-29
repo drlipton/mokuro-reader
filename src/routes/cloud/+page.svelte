@@ -7,6 +7,7 @@
   import { promptConfirmation } from '$lib/util';
   import { GoogleSolid } from 'flowbite-svelte-icons';
   import { profiles, volumes } from '$lib/settings';
+  import { get } from 'svelte/store';
 
   const CLIENT_ID = import.meta.env.VITE_GDRIVE_CLIENT_ID;
   const API_KEY = import.meta.env.VITE_GDRIVE_API_KEY;
@@ -18,11 +19,11 @@
   const READER_FOLDER = 'mokuro-reader';
   const VOLUME_DATA_FILE = 'volume-data.json';
   const PROFILES_FILE = 'profiles.json';
-
   const type = 'application/json';
 
   let tokenClient: any;
   let accessToken = '';
+  let gapiReady = false;
 
   let readerFolderId = '';
   let volumeDataId = '';
@@ -47,7 +48,7 @@
       xhr.responseType = 'blob';
 
       xhr.onprogress = ({ loaded, total }) => {
-        loadingMessage = '';
+       loadingMessage = '';
         completed = loaded;
         totalSize = total;
       };
@@ -59,7 +60,8 @@
       };
 
       xhr.onerror = (event) => {
-        console.error(`xhr ${fileId}: download error at ${event.loaded} of ${event.total}`);
+        console.error(`xhr ${fileId}: download 
+error at ${event.loaded} of ${event.total}`);
         showSnackbar('Download failed');
         reject(new Error('Error downloading file'));
       };
@@ -85,43 +87,50 @@
       throw resp;
     }
 
-    accessToken = resp?.access_token;
-    loadingMessage = 'Connecting to drive';
+    accessToken = resp?.access_token || gapi.client.getToken()?.access_token;
+    if (accessToken) {
+        localStorage.setItem('gdrive_token', accessToken);
+    }
 
+    loadingMessage = 'Connecting to drive';
     const { result: readerFolderRes } = await gapi.client.drive.files.list({
       q: `mimeType='application/vnd.google-apps.folder' and name='${READER_FOLDER}'`,
       fields: 'files(id)'
     });
-
     if (readerFolderRes.files?.length === 0) {
       const { result: createReaderFolderRes } = await gapi.client.drive.files.create({
         resource: { mimeType: FOLDER_MIME_TYPE, name: READER_FOLDER },
         fields: 'id'
       });
-
       readerFolderId = createReaderFolderRes.id || '';
     } else {
       const id = readerFolderRes.files?.[0]?.id || '';
-
       readerFolderId = id || '';
     }
+    localStorage.setItem('readerFolderId', readerFolderId);
 
     const { result: volumeDataRes } = await gapi.client.drive.files.list({
       q: `'${readerFolderId}' in parents and name='${VOLUME_DATA_FILE}'`,
-      fields: 'files(id, name)'
+      fields: 'files(id, name, modifiedTime)'
     });
-
     if (volumeDataRes.files?.length !== 0) {
       volumeDataId = volumeDataRes.files?.[0].id || '';
+      localStorage.setItem('volumeDataId', volumeDataId);
+      const remoteModifiedTime = new Date(volumeDataRes.files[0].modifiedTime).getTime();
+      const localLastSync = parseInt(localStorage.getItem('lastSyncTime') || '0');
+      if (remoteModifiedTime > localLastSync) {
+        console.log('Sync: Newer data found on Google Drive. Downloading...');
+        onDownloadVolumeData();
+      }
     }
 
     const { result: profilesRes } = await gapi.client.drive.files.list({
       q: `'${readerFolderId}' in parents and name='${PROFILES_FILE}'`,
       fields: 'files(id, name)'
     });
-
     if (profilesRes.files?.length !== 0) {
       profilesId = profilesRes.files?.[0].id || '';
+      localStorage.setItem('profilesId', profilesId);
     }
 
     loadingMessage = '';
@@ -140,20 +149,36 @@
   }
 
   onMount(() => {
-    gapi.load('client', async () => {
-      await gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: [DISCOVERY_DOC]
-      });
-    });
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+        gapi.load('client:picker', async () => {
+            await gapi.client.init({
+                apiKey: API_KEY,
+                discoveryDocs: [DISCOVERY_DOC]
+            });
+            
+            const storedToken = localStorage.getItem('gdrive_token');
+            if (storedToken) {
+                gapi.client.setToken({ access_token: storedToken });
+            }
 
-    gapi.load('picker', () => {});
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                callback: connectDrive
+            });
 
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPES,
-      callback: connectDrive
-    });
+            if (gapi.client.getToken() !== null) {
+                connectDrive();
+            }
+
+            gapiReady = true;
+        });
+    };
+    document.body.appendChild(script);
   });
 
   function createPicker() {
@@ -162,7 +187,6 @@
       .setMode(google.picker.DocsViewMode.LIST)
       .setIncludeFolders(true)
       .setParent(readerFolderId);
-
     const picker = new google.picker.PickerBuilder()
       .addView(docsView)
       .setOAuthToken(accessToken)
@@ -184,7 +208,6 @@
         loadingMessage = 'Adding to catalog...';
 
         const file = new File([blob], docs[0].name);
-
         await processFiles([file]);
         loadingMessage = '';
       }
@@ -196,14 +219,15 @@
   }
 
   async function onUploadVolumeData() {
+    console.log('Sync: Manual upload triggered...');
     const metadata = {
       mimeType: type,
       name: VOLUME_DATA_FILE,
-      parents: [volumeDataId ? null : readerFolderId]
+      parents: [volumeDataId ?
+        null : readerFolderId]
     };
 
     loadingMessage = 'Uploading volume data';
-
     const res = await uploadFile({
       accessToken,
       fileId: volumeDataId,
@@ -211,11 +235,13 @@
       localStorageId: 'volumes',
       type
     });
-
     volumeDataId = res.id;
+    localStorage.setItem('volumeDataId', volumeDataId);
     loadingMessage = '';
+    localStorage.setItem('lastSyncTime', Date.now().toString());
 
     if (volumeDataId) {
+      console.log('Sync: Manual upload successful.');
       showSnackbar('Volume data uploaded');
     }
   }
@@ -224,20 +250,20 @@
     const metadata = {
       mimeType: type,
       name: PROFILES_FILE,
-      parents: [profilesId ? null : readerFolderId]
+      parents: [profilesId ?
+        null : readerFolderId]
     };
 
     loadingMessage = 'Uploading profiles';
-
     const res = await uploadFile({
       accessToken,
       fileId: profilesId,
       metadata,
-      localStorageId: 'profiles',
+localStorageId: 'profiles',
       type
     });
-
     profilesId = res.id;
+    localStorage.setItem('profilesId', profilesId);
     loadingMessage = '';
 
     if (profilesId) {
@@ -247,44 +273,41 @@
 
   async function onDownloadVolumeData() {
     loadingMessage = 'Downloading volume data';
-
+    console.log('Sync: Downloading and merging volume data...');
     const { body } = await gapi.client.drive.files.get({
       fileId: volumeDataId,
       alt: 'media'
     });
-
     const downloaded = JSON.parse(body);
 
-    volumes.update((prev) => {
-      return {
-        ...prev,
-        ...downloaded
-      };
-    });
+    const localVolumes = get(volumes);
+    const mergedVolumes = { ...localVolumes };
 
+    for (const key in downloaded) {
+        if (!mergedVolumes[key] || (downloaded[key].lastRead || 0) > (mergedVolumes[key].lastRead || 0)) {
+            mergedVolumes[key] = downloaded[key];
+        }
+    }
+
+    volumes.set(mergedVolumes);
+    
     loadingMessage = '';
-    showSnackbar('Volume data downloaded');
+    localStorage.setItem('lastSyncTime', Date.now().toString());
+    console.log('Sync: Merge complete. Volumes updated.');
+    showSnackbar('Volume data synced');
   }
 
   async function onDownloadProfiles() {
     loadingMessage = 'Downloading profiles';
-
     const { body } = await gapi.client.drive.files.get({
       fileId: profilesId,
       alt: 'media'
     });
-
     const downloaded = JSON.parse(body);
 
-    profiles.update((prev) => {
-      return {
-        ...prev,
-        ...downloaded
-      };
-    });
-
+    profiles.set(downloaded);
     loadingMessage = '';
-    showSnackbar('Profiles downloaded');
+    showSnackbar('Profiles synced');
   }
 </script>
 
@@ -293,7 +316,8 @@
 </svelte:head>
 
 <div class="p-2 h-[90svh]">
-  {#if loadingMessage || completed > 0}
+  {#if loadingMessage ||
+    completed > 0}
     <Loader>
       {#if completed > 0}
         <P>{formatBytes(completed)} / {formatBytes(totalSize)}</P>
@@ -306,7 +330,8 @@
     <div class="flex justify-between items-center gap-6 flex-col">
       <h2 class="text-3xl font-semibold text-center pt-2">Google Drive:</h2>
       <p class="text-center">
-        Add your zipped manga files to the <span class="text-primary-700">{READER_FOLDER}</span> folder
+        Add your 
+        zipped manga files to the <span class="text-primary-700">{READER_FOLDER}</span> folder
         in your Google Drive.
       </p>
       <div class="flex flex-col gap-4 w-full max-w-3xl">
@@ -322,7 +347,7 @@
             <Button
               color="alternative"
               on:click={() =>
-                promptConfirmation('Download and overwrite volume data?', onDownloadVolumeData)}
+                promptConfirmation('Download and merge volume data?', onDownloadVolumeData)}
             >
               Download volume data
             </Button>
@@ -350,12 +375,13 @@
   {:else}
     <div class="flex justify-center pt-0 sm:pt-32">
       <button
-        class="w-full border rounded-lg border-slate-600 p-10 border-opacity-50 hover:bg-slate-800 max-w-3xl"
+        class="w-full border rounded-lg border-slate-600 p-10 border-opacity-50 hover:bg-slate-800 max-w-3xl disabled:opacity-50 disabled:cursor-wait"
         on:click={signIn}
+        disabled={!gapiReady}
       >
         <div class="flex sm:flex-row flex-col gap-2 items-center justify-center">
           <GoogleSolid size="lg" />
-          <h2 class="text-lg">Connect to Google Drive</h2>
+          <h2 class="text-lg">{ gapiReady ? 'Connect to Google Drive' : 'Initializing...'}</h2>
         </div>
       </button>
     </div>
