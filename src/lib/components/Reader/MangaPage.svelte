@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Page } from '$lib/types';
-	import { onMount, onDestroy, createEventDispatcher } from 'svelte';
+	import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
 	import TextBoxes from './TextBoxes.svelte';
 	import { zoomDefault } from '$lib/panzoom';
 	import { settings } from '$lib/settings';
@@ -13,9 +13,9 @@
 
 	const dispatch = createEventDispatcher();
 
-	let imageUrl: string | undefined;
 	let loading = true;
 	let containerEl: HTMLDivElement;
+	let canvasEl: HTMLCanvasElement;
 	let containerWidth: number;
 	let panzoom: PanzoomObject | null = null;
 	let sourceFile: File | Blob | null = null;
@@ -54,30 +54,95 @@
 	async function updateImage(file: File | Blob) {
 		console.log(`Processing page: ${page.img_path}`);
 		loading = true;
-		if (imageUrl) {
-			URL.revokeObjectURL(imageUrl);
+
+		// Step 1: Create a blob for the correct half of the page if necessary
+		let blobToProcess = file;
+		if (pageHalf) {
+			const image = new Image();
+			const objectUrl = URL.createObjectURL(file);
+			const splitBlob = await new Promise<Blob | null>((resolve) => {
+				image.onload = () => {
+					URL.revokeObjectURL(objectUrl);
+					const canvas = document.createElement('canvas');
+					const ctx = canvas.getContext('2d');
+					if (!ctx) {
+						resolve(null);
+						return;
+					}
+					canvas.width = image.width / 2;
+					canvas.height = image.height;
+					const sx = pageHalf === 'left' ? 0 : image.width / 2;
+					ctx.drawImage(
+						image,
+						sx,
+						0,
+						image.width / 2,
+						image.height,
+						0,
+						0,
+						image.width / 2,
+						image.height
+					);
+					canvas.toBlob(resolve, file.type);
+				};
+				image.onerror = () => {
+					URL.revokeObjectURL(objectUrl);
+					resolve(null);
+				};
+				image.src = objectUrl;
+			});
+
+			if (splitBlob) {
+				blobToProcess = splitBlob;
+			}
 		}
+
+		// Step 2: Crop the blob if autoCrop is enabled
+		let finalBlob = blobToProcess;
 		if ($settings.autoCrop) {
 			try {
 				const { cropImageBorder } = await import('$lib/util/crop');
-				const { blob: croppedBlob, x, y, newWidth, newHeight } = await cropImageBorder(file);
-				imageUrl = URL.createObjectURL(croppedBlob);
-				cropOffsetX = x;
-				cropOffsetY = y;
-				croppedWidth = newWidth;
-				croppedHeight = newHeight;
-			} catch (error) {
-				console.error('Failed to crop image, falling back to original.', error);
-				imageUrl = URL.createObjectURL(file);
+				const result = await cropImageBorder(blobToProcess);
+				finalBlob = result.blob;
+				cropOffsetX = result.x;
+				cropOffsetY = result.y;
+			} catch (e) {
+				console.error('Failed to crop image, falling back.', e);
 				resetCrop();
 			}
 		} else {
-			imageUrl = URL.createObjectURL(file);
 			resetCrop();
 		}
-		loading = false;
-		dispatch('loadcomplete');
-		console.log(`Finished processing page: ${page.img_path}`);
+
+		// Step 3: Render the final blob to the canvas
+		const finalImage = new Image();
+		const finalUrl = URL.createObjectURL(finalBlob);
+		finalImage.onload = async () => {
+			URL.revokeObjectURL(finalUrl);
+			croppedWidth = finalImage.width;
+			croppedHeight = finalImage.height;
+			renderCanvas(finalImage);
+			loading = false;
+			await tick(); // Ensure DOM is updated with new dimensions
+			dispatch('loadcomplete');
+			console.log(`Finished processing page: ${page.img_path}`);
+		};
+		finalImage.onerror = () => {
+			loading = false;
+			dispatch('loadcomplete'); // Dispatch even on error to unblock reader
+		};
+		finalImage.src = finalUrl;
+	}
+
+	function renderCanvas(image: HTMLImageElement) {
+		const ctx = canvasEl.getContext('2d');
+		if (!ctx) return;
+
+		const dpr = window.devicePixelRatio || 1;
+		canvasEl.width = image.width * dpr;
+		canvasEl.height = image.height * dpr;
+		ctx.scale(dpr, dpr);
+		ctx.drawImage(image, 0, 0, image.width, image.height);
 	}
 
 	function resetCrop() {
@@ -91,15 +156,12 @@
 		if (panzoom) {
 			panzoom.destroy();
 		}
-		if (imageUrl) {
-			URL.revokeObjectURL(imageUrl);
-		}
 		console.log(`Unloaded page: ${page.img_path}`);
 	});
 
 	$: effectiveWidth = pageHalf ? croppedWidth / 2 : croppedWidth;
-	$: aspectRatio = effectiveWidth / croppedHeight;
-	$: scaleFactor = isVertical ? containerWidth / effectiveWidth : 1;
+	$: aspectRatio = croppedWidth / croppedHeight;
+	$: scaleFactor = isVertical ? containerWidth / croppedWidth : 1;
 	$: containerImageOffsetX = 0;
 	$: containerImageOffsetY = 0;
 </script>
@@ -108,13 +170,16 @@
 	bind:this={containerEl}
 	bind:clientWidth={containerWidth}
 	draggable="false"
-	class="page relative bg-no-repeat"
-	style:width={isVertical ? '100vw' : `${effectiveWidth}px`}
+	class="page-container relative"
+	style:width={isVertical ? '100vw' : `${croppedWidth}px`}
 	style:height={isVertical ? `calc(100vw / ${aspectRatio})` : `${croppedHeight}px`}
-	style:background-image={imageUrl && !loading ? `url(${imageUrl})` : 'none'}
-	style:background-position={pageHalf === 'right' ? '100% 0%' : pageHalf === 'left' ? '0% 0%' : 'center'}
-	style:background-size={pageHalf ? '200% 100%' : 'contain'}
 >
+	<canvas
+		bind:this={canvasEl}
+		class="page"
+		style:width={isVertical ? '100vw' : `${croppedWidth}px`}
+		style:height={isVertical ? `calc(100vw / ${aspectRatio})` : `${croppedHeight}px`}
+	/>
 	{#if !loading && sourceFile}
 		<TextBoxes
 			{page}
@@ -130,7 +195,15 @@
 </div>
 
 <style>
-	.bg-no-repeat {
-		background-repeat: no-repeat;
+	.page {
+		display: block;
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+	}
+	.page-container {
+		display: flex;
+		justify-content: center;
+		align-items: center;
 	}
 </style>

@@ -4,17 +4,16 @@
 	import { settings } from '$lib/settings';
 	import { imageToWebp, showCropper, updateLastCard } from '$lib/anki-connect';
 	import { promptConfirmation } from '$lib/util';
-	// This line was missing
 
 	export let page: Page;
 	export let src: File | Blob;
-	// Can be a local file or a fetched blob
 	export let scaleFactor = 1;
 	export let cropOffsetX = 0;
 	export let cropOffsetY = 0;
 	export let containerImageOffsetX = 0;
 	export let containerImageOffsetY = 0;
 	export let pageHalf: 'left' | 'right' | undefined = undefined;
+
 	$: textBoxes = page.blocks
 		.map((block) => {
 			if (!block.box) {
@@ -25,36 +24,37 @@
 
 			let [_xmin, _ymin, _xmax, _ymax] = box;
 
-			if (pageHalf) {
-				const halfWidth = img_width / 2;
-				if (pageHalf === 'left') {
-					if (_xmin >= halfWidth) return null;
-					_xmax = Math.min(_xmax, halfWidth);
-				} else {
-					if (_xmax <= halfWidth) return null;
-					_xmin = Math.max(0, _xmin - halfWidth);
-					_xmax -= halfWidth;
-				}
+			const halfWidth = img_width / 2;
+			if (pageHalf === 'left') {
+				if (_xmin >= halfWidth) return null; // Filter out boxes on the other half
+				_xmax = Math.min(_xmax, halfWidth);
+			} else if (pageHalf === 'right') {
+				if (_xmax <= halfWidth) return null; // Filter out boxes on the other half
+				_xmin = Math.max(0, _xmin - halfWidth);
+				_xmax -= halfWidth;
 			}
 
-			const xmin = clamp(_xmin, 0, img_width);
+			const xmin = clamp(_xmin, 0, pageHalf ? halfWidth : img_width);
 			const ymin = clamp(_ymin, 0, img_height);
-			const xmax = clamp(_xmax, 0, img_width);
+			const xmax = clamp(_xmax, 0, pageHalf ? halfWidth : img_width);
 			const ymax = clamp(_ymax, 0, img_height);
+
+			const finalXMin = xmin - cropOffsetX;
+			const finalYMin = ymin - cropOffsetY;
 
 			const width = xmax - xmin;
 			const height = ymax - ymin;
 			const area = width * height;
 
+			if (width <= 0 || height <= 0) return null;
+
 			const scaledFontSize =
 				$settings.fontSize === 'auto' ? font_size * scaleFactor : parseFloat($settings.fontSize);
 			const finalFontSizeUnit = $settings.fontSize === 'auto' ? 'px' : 'pt';
 
-			const finalXMin = pageHalf === 'right' ? xmin : xmin - cropOffsetX;
-
 			const textBox = {
 				left: `${containerImageOffsetX + finalXMin * scaleFactor}px`,
-				top: `${containerImageOffsetY + (ymin - cropOffsetY) * scaleFactor}px`,
+				top: `${containerImageOffsetY + finalYMin * scaleFactor}px`,
 				width: `${width * scaleFactor}px`,
 				height: `${height * scaleFactor}px`,
 				fontSize: `${scaledFontSize}${finalFontSizeUnit}`,
@@ -137,11 +137,12 @@
 		white-space: nowrap;
 		border: 1px solid rgba(0, 0, 0, 0);
 		z-index: 11;
+		pointer-events: all;
 	}
 
 	.textBox:focus,
 	.textBox:hover {
-		background: rgb(255, 255, 255);
+		background: rgba(255, 255, 255, 0.8);
 		border: 1px solid rgba(0, 0, 0, 0);
 	}
 
@@ -151,7 +152,7 @@
 		letter-spacing: 0.1em;
 		line-height: 1.1em;
 		margin: 0;
-		background-color: rgb(255, 255, 255);
+		background-color: rgba(255, 255, 255, 0.8);
 		font-weight: var(--bold);
 		z-index: 11;
 	}
