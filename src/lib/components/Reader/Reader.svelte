@@ -13,9 +13,9 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
 	import type { Page, Volume } from '$lib/types';
-    import ReaderControls from './ReaderControls.svelte';
+	import ReaderControls from './ReaderControls.svelte';
 	import { getCharCount } from '$lib/util/count-chars';
-    import { Spinner } from 'flowbite-svelte';
+	import { Spinner } from 'flowbite-svelte';
 
 	export let loadedVolume: Volume;
 	export let volumeSettings: VolumeSettings;
@@ -29,11 +29,23 @@
 	let verticalScrollingInitialized = false;
 	let initialScrollDone = false;
 	let pageVisibility: boolean[] = [];
-    let controlsVisible = true;
-    let controlsTimeout: NodeJS.Timeout;
+	let controlsVisible = true;
+	let controlsTimeout: NodeJS.Timeout;
+	let pagesToLoad = 0;
 
 	// Derived State
-	$: pages = loadedVolume?.mokuroData.pages || [];
+	$: originalPages = loadedVolume?.mokuroData.pages || [];
+	$: pages = $settings.splitDoublePages
+		? originalPages.flatMap((p) => {
+				if (p.img_width > p.img_height) {
+					const leftPage = { ...p, split: 'left' };
+					const rightPage = { ...p, split: 'right' };
+					return volumeSettings.rightToLeft ? [rightPage, leftPage] : [leftPage, rightPage];
+				}
+				return p;
+		  })
+		: originalPages;
+
 	$: page = $progress?.[loadedVolume?.mokuroData.volume_uuid || ''] || 1;
 	$: index = page - 1;
 	$: navAmount =
@@ -41,7 +53,6 @@
 		(volumeSettings.hasCover && !volumeSettings.singlePageView && index === 0)
 			? 1
 			: 2;
-
 	const PAGE_BUFFER = 1;
 	// --- Lifecycle Hooks ---
 	onMount(() => {
@@ -49,7 +60,7 @@
 			document.documentElement.requestFullscreen();
 		}
 		pageVisibility = Array(pages.length).fill(false);
-        resetControlsTimeout();
+		resetControlsTimeout();
 	});
 	afterUpdate(() => {
 		if ($settings.verticalScrolling && pages.length > 0 && !verticalScrollingInitialized) {
@@ -58,10 +69,9 @@
 			cleanupVerticalScrolling();
 		}
 	});
-
 	onDestroy(() => {
 		cleanupVerticalScrolling();
-        if (controlsTimeout) clearTimeout(controlsTimeout);
+		if (controlsTimeout) clearTimeout(controlsTimeout);
 		fireReaderClosedEvent();
 	});
 	beforeNavigate(() => {
@@ -69,7 +79,6 @@
 			document.exitFullscreen();
 		}
 	});
-
 	// --- Reactive Logic ---
 	$: {
 		const newVisibility = Array(pages.length).fill(false);
@@ -79,8 +88,8 @@
 			for (let i = startIndex; i <= endIndex; i++) {
 				newVisibility[i] = true;
 			}
-            // Fallback to ensure current page is always visible
-            newVisibility[index] = true;
+			// Fallback to ensure current page is always visible
+			newVisibility[index] = true;
 		} else {
 			newVisibility[index] = true;
 			if (showSecondPage()) {
@@ -95,20 +104,34 @@
 		verticalScrollingInitialized = false;
 	}
 
+	// This block sets the number of pages we expect to load before zooming
+	$: {
+		if (page) {
+			// Triggered reactively when `page` store changes
+			pagesToLoad = showSecondPage() ? 2 : 1;
+		}
+	}
 	// --- Functions ---
-    function resetControlsTimeout() {
-        if (controlsTimeout) clearTimeout(controlsTimeout);
-        controlsTimeout = setTimeout(() => {
-            controlsVisible = false;
-        }, 3000);
-    }
+	async function onPageLoad() {
+		pagesToLoad--;
+		if (pagesToLoad <= 0 && !$settings.verticalScrolling) {
+			await tick(); // Wait for the DOM to update
+			zoomDefault();
+		}
+	}
 
-    function handleCentralClick(event: MouseEvent) {
+	function resetControlsTimeout() {
+		if (controlsTimeout) clearTimeout(controlsTimeout);
+		controlsTimeout = setTimeout(() => {
+			controlsVisible = false;
+		}, 3000);
+	}
+
+	function handleCentralClick(event: MouseEvent) {
 		// This function is attached to the wrapper, so clicks on side buttons won't trigger it.
 		// Clicks on textboxes will also be stopped by their own handlers.
 		const clickY = event.clientY;
 		const screenHeight = window.innerHeight;
-
 		// Only toggle controls if clicking in the bottom 25% of the screen
 		if (clickY >= screenHeight * 0.75) {
 			controlsVisible = !controlsVisible;
@@ -121,13 +144,11 @@
 		}
 	}
 
-
 	async function initializeVerticalScrolling() {
-		await tick(); 
+		await tick();
 
 		const pageElements = document.querySelectorAll('.page-container');
 		if (pageElements.length === 0) return;
-
 		const options = { root: null, rootMargin: '0px', threshold: 0.5 };
 		observer = new IntersectionObserver(handleIntersect, options);
 		pageElements.forEach((target) => observer.observe(target));
@@ -137,8 +158,8 @@
 			const currentPageElement = document.querySelector(`[data-page-index="${index}"]`);
 			if (currentPageElement) {
 				currentPageElement.scrollIntoView({ block: 'start', behavior: 'instant' });
-                pageVisibility[index] = true;
-                await tick();
+				pageVisibility[index] = true;
+				await tick();
 				initialScrollDone = true;
 			}
 		}
@@ -196,8 +217,7 @@
 
 	function changePage(newPage: number, ignoreTimeout = false) {
 		const end = new Date();
-		const clickDuration = ignoreTimeout ?
-			0 : end.getTime() - start?.getTime();
+		const clickDuration = ignoreTimeout ? 0 : end.getTime() - start?.getTime();
 
 		if (pages && loadedVolume && clickDuration < 200) {
 			if (showSecondPage() && page + 1 === pages.length && newPage > page) {
@@ -210,14 +230,12 @@
 				getCharCount(pages, pageClamped).charCount,
 				pageClamped >= pages.length - 1
 			);
-			if (!$settings.verticalScrolling) {
-				zoomDefault();
-			} else {
-                const element = document.querySelector(`[data-page-index="${pageClamped - 1}"]`);
-                if (element) {
-                    element.scrollIntoView({ block: 'start', behavior: 'smooth' });
-                }
-            }
+			if ($settings.verticalScrolling) {
+				const element = document.querySelector(`[data-page-index="${pageClamped - 1}"]`);
+				if (element) {
+					element.scrollIntoView({ block: 'start', behavior: 'smooth' });
+				}
+			}
 		}
 	}
 
@@ -317,8 +335,7 @@
 <svelte:window
 	on:resize={$settings.verticalScrolling ? null : zoomDefault}
 	on:keyup={handleShortcuts}
-	on:touchstart={$settings.verticalScrolling ?
-		null : handleTouchStart}
+	on:touchstart={$settings.verticalScrolling ? null : handleTouchStart}
 	on:touchend={$settings.verticalScrolling ? null : handlePointerUp}
 />
 <svelte:head>
@@ -346,10 +363,17 @@
 			role="button"
 			tabindex="0"
 		>
-			{#each pages as p, i (p.img_path)}
+			{#each pages as p, i (p.img_path + i)}
 				<div class="page-container" data-page-index={i}>
 					{#if pageVisibility[i]}
-						<MangaPage page={p} src={Object.values(loadedVolume?.files)[i]} isVertical={true} />
+						<MangaPage
+							page={p}
+							src={Object.values(loadedVolume?.files)[
+								originalPages.findIndex((op) => op.img_path === p.img_path)
+							]}
+							isVertical={true}
+							pageHalf={p.split}
+						/>
 					{:else}
 						<div
 							style:height={`calc(100vw / ${p.img_width / p.img_height})`}
@@ -361,7 +385,6 @@
 		</div>
 	{:else}
 		<div class="relative w-full h-full" on:click={handleCentralClick}>
-			<!-- Main Content (Panzoom, MangaPage etc.) -->
 			<div class="flex" style:background-color={$settings.backgroundColor}>
 				<Panzoom>
 					<div
@@ -375,23 +398,36 @@
 						{#key page}
 							{#if showSecondPage()}
 								<MangaPage
+									on:loadcomplete={onPageLoad}
 									page={pages[index + 1]}
-									src={Object.values(loadedVolume?.files)[index + 1]}
+									src={Object.values(loadedVolume?.files)[
+										originalPages.findIndex((op) => op.img_path === pages[index + 1].img_path)
+									]}
+									pageHalf={pages[index + 1].split}
 								/>
 							{/if}
-							<MangaPage page={pages[index]} src={Object.values(loadedVolume?.files)[index]} />
+							<MangaPage
+								on:loadcomplete={onPageLoad}
+								page={pages[index]}
+								src={Object.values(loadedVolume?.files)[
+									originalPages.findIndex((op) => op.img_path === pages[index].img_path)
+								]}
+								pageHalf={pages[index].split}
+							/>
 						{/key}
 					</div>
 				</Panzoom>
 			</div>
 
-			<!-- Overlays for page turning with z-index: 10 -->
 			<button
 				class="left-0 top-0 absolute h-full opacity-0 cursor-pointer"
 				style:width={`${$settings.edgeButtonWidth}%`}
 				style="z-index: 10;"
 				on:mousedown={mouseDown}
-				on:mouseup={(e) => { e.stopPropagation(); left(e); }}
+				on:mouseup={(e) => {
+					e.stopPropagation();
+					left(e);
+				}}
 				aria-label="Previous Page"
 			/>
 			<button
@@ -399,7 +435,10 @@
 				style:width={`${$settings.edgeButtonWidth}%`}
 				style="z-index: 10;"
 				on:mousedown={mouseDown}
-				on:mouseup={(e) => { e.stopPropagation(); right(e); }}
+				on:mouseup={(e) => {
+					e.stopPropagation();
+					right(e);
+				}}
 				aria-label="Next Page"
 			/>
 		</div>

@@ -1,6 +1,6 @@
- <script lang="ts">
+<script lang="ts">
 	import type { Page } from '$lib/types';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, createEventDispatcher } from 'svelte';
 	import TextBoxes from './TextBoxes.svelte';
 	import { zoomDefault } from '$lib/panzoom';
 	import { settings } from '$lib/settings';
@@ -9,6 +9,9 @@
 	export let page: Page;
 	export let src: File | string;
 	export let isVertical = false;
+	export let pageHalf: 'left' | 'right' | undefined = undefined;
+
+	const dispatch = createEventDispatcher();
 
 	let imageUrl: string | undefined;
 	let loading = true;
@@ -73,6 +76,7 @@
 			resetCrop();
 		}
 		loading = false;
+		dispatch('loadcomplete');
 		console.log(`Finished processing page: ${page.img_path}`);
 	}
 
@@ -93,42 +97,40 @@
 		console.log(`Unloaded page: ${page.img_path}`);
 	});
 
-	$: aspectRatio = croppedWidth / croppedHeight;
-	$: scaleFactor = isVertical ? containerWidth / croppedWidth : 1;
-	$: containerImageOffsetX = isVertical ? 0 : (page.img_width - croppedWidth) / 2;
-	$: containerImageOffsetY = isVertical ? 0 : (page.img_height - croppedHeight) / 2;
+	$: effectiveWidth = pageHalf ? croppedWidth / 2 : croppedWidth;
+	$: aspectRatio = effectiveWidth / croppedHeight;
+	$: scaleFactor = isVertical ? containerWidth / effectiveWidth : 1;
+	$: containerImageOffsetX = 0;
+	$: containerImageOffsetY = 0;
 </script>
 
 <div
 	bind:this={containerEl}
 	bind:clientWidth={containerWidth}
 	draggable="false"
-	class="page relative bg-contain bg-no-repeat bg-center"
-	style:width={isVertical ? '100vw' : `${page.img_width}px`}
-	style:height={isVertical ? `calc(100vw / ${aspectRatio})` : `${page.img_height}px`}
+	class="page relative bg-no-repeat"
+	style:width={isVertical ? '100vw' : `${effectiveWidth}px`}
+	style:height={isVertical ? `calc(100vw / ${aspectRatio})` : `${croppedHeight}px`}
 	style:background-image={imageUrl && !loading ? `url(${imageUrl})` : 'none'}
+	style:background-position={pageHalf === 'right' ? '100% 0%' : pageHalf === 'left' ? '0% 0%' : 'center'}
+	style:background-size={pageHalf ? '200% 100%' : 'contain'}
 >
 	{#if !loading && sourceFile}
 		<TextBoxes
-			page={page}
+			{page}
 			src={sourceFile}
 			{scaleFactor}
 			{cropOffsetX}
 			{cropOffsetY}
 			{containerImageOffsetX}
 			{containerImageOffsetY}
+			{pageHalf}
 		/>
 	{/if}
 </div>
 
 <style>
-	.bg-contain {
-		background-size: contain;
-	}
 	.bg-no-repeat {
 		background-repeat: no-repeat;
-	}
-	.bg-center {
-		background-position: center;
 	}
 </style>

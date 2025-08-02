@@ -62,7 +62,8 @@ export type Settings = {
   zoomDefault: ZoomModes;
   invertColors: boolean;
   verticalScrolling: boolean;
-  cropping: boolean;
+  autoCrop: boolean;
+  splitDoublePages: boolean;
   volumeDefaults: VolumeDefaults;
   ankiConnectSettings: AnkiConnectSettings;
 };
@@ -92,7 +93,8 @@ const defaultSettings: Settings = {
   zoomDefault: 'zoomFitToScreen',
   invertColors: false,
   verticalScrolling: false,
-  cropping: false,
+  autoCrop: false,
+  splitDoublePages: false,
   volumeDefaults: {
     singlePageView: false,
     rightToLeft: true,

@@ -5,10 +5,12 @@ An online reader, gallery and stat tracker for [mokuro](https://github.com/kha-w
 https://github.com/ZXY101/mokuro-reader/assets/39561296/45a214a8-3f69-461c-87d7-25b17dea3060
 
 ## Fork Features:
+Added sereval new features to enhance the reading experience on mobile and ereaders.
 - Added support for vertical scrolling
 - Added cropping setting for cropping out white borders
-- Server side manga storage
-- Read history
+- Added page split, when enabled, wide pages get split into two
+- Added read history to quickly resume where user left off
+- Server side manga storage option to add personal http server
 
 ## Features:
 - Stat tracking (volumes read, pages read, characters read & minutes read)

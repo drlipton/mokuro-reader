@@ -14,6 +14,7 @@
 	export let cropOffsetY = 0;
 	export let containerImageOffsetX = 0;
 	export let containerImageOffsetY = 0;
+	export let pageHalf: 'left' | 'right' | undefined = undefined;
 	$: textBoxes = page.blocks
 		.map((block) => {
 			if (!block.box) {
@@ -23,6 +24,18 @@
 			const { box, font_size, lines, vertical } = block;
 
 			let [_xmin, _ymin, _xmax, _ymax] = box;
+
+			if (pageHalf) {
+				const halfWidth = img_width / 2;
+				if (pageHalf === 'left') {
+					if (_xmin >= halfWidth) return null;
+					_xmax = Math.min(_xmax, halfWidth);
+				} else {
+					if (_xmax <= halfWidth) return null;
+					_xmin = Math.max(0, _xmin - halfWidth);
+					_xmax -= halfWidth;
+				}
+			}
 
 			const xmin = clamp(_xmin, 0, img_width);
 			const ymin = clamp(_ymin, 0, img_height);
@@ -37,11 +50,12 @@
 				$settings.fontSize === 'auto' ? font_size * scaleFactor : parseFloat($settings.fontSize);
 			const finalFontSizeUnit = $settings.fontSize === 'auto' ? 'px' : 'pt';
 
+			const finalXMin = pageHalf === 'right' ? xmin : xmin - cropOffsetX;
+
 			const textBox = {
-				left: `${containerImageOffsetX + (xmin - cropOffsetX) * scaleFactor}px`,
+				left: `${containerImageOffsetX + finalXMin * scaleFactor}px`,
 				top: `${containerImageOffsetY + (ymin - cropOffsetY) * scaleFactor}px`,
-				width: 
-					`${width * scaleFactor}px`,
+				width: `${width * scaleFactor}px`,
 				height: `${height * scaleFactor}px`,
 				fontSize: `${scaledFontSize}${finalFontSizeUnit}`,
 				writingMode: vertical ? 'vertical-rl' : 'horizontal-tb',
@@ -56,11 +70,9 @@
 			return b - a;
 		});
 
-	$: fontWeight = $settings.boldFont ?
-		'bold' : '400';
+	$: fontWeight = $settings.boldFont ? 'bold' : '400';
 	$: display = $settings.displayOCR ? 'block' : 'none';
-	$: border = $settings.textBoxBorders ?
-		'1px solid red' : 'none';
+	$: border = $settings.textBoxBorders ? '1px solid red' : 'none';
 	$: contenteditable = $settings.textEditable;
 	$: triggerMethod = $settings.ankiConnectSettings.triggerMethod || 'both';
 	async function onUpdateCard(lines: string[]) {
