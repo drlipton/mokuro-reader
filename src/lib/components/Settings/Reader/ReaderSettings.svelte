@@ -6,12 +6,16 @@
 
   let swipeThresholdValue = $settings.swipeThreshold;
   let edgeButtonWidthValue = $settings.edgeButtonWidth;
+  let colorTemperatureValue = $settings.colorTemperature;
   function onSwipeChange() {
     updateSetting('swipeThreshold', swipeThresholdValue);
   }
 
   function onWidthChange() {
     updateSetting('edgeButtonWidth', edgeButtonWidthValue);
+  }
+  function onColorTempChange() {
+    updateSetting('colorTemperature', colorTemperatureValue);
   }
 </script>
 
@@ -34,6 +38,10 @@
     <div>
       <Label>Edge button width</Label>
       <Range on:change={onWidthChange} min={1} max={100} bind:value={edgeButtonWidthValue} />
+    </div>
+    <div>
+      <Label>Color Temperature</Label>
+      <Range on:change={onColorTempChange} min={0} max={200} bind:value={colorTemperatureValue} />
     </div>
   </div>
 </AccordionItem>

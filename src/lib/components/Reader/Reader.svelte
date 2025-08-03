@@ -32,7 +32,6 @@
 	let controlsVisible = true;
 	let controlsTimeout: NodeJS.Timeout;
 	let pagesToLoad = 0;
-
 	// Derived State
 	$: originalPages = loadedVolume?.mokuroData.pages || [];
 	$: pages = $settings.splitDoublePages
@@ -45,7 +44,6 @@
 				return p;
 		  })
 		: originalPages;
-
 	$: page = $progress?.[loadedVolume?.mokuroData.volume_uuid || ''] || 1;
 	$: index = page - 1;
 	$: navAmount =
@@ -115,7 +113,8 @@
 	async function onPageLoad() {
 		pagesToLoad--;
 		if (pagesToLoad <= 0 && !$settings.verticalScrolling) {
-			await tick(); // Wait for the DOM to update
+			await tick();
+			// Wait for the DOM to update
 			zoomDefault();
 		}
 	}
@@ -388,13 +387,20 @@
 			<div class="flex" style:background-color={$settings.backgroundColor}>
 				<Panzoom>
 					<div
-						class="flex flex-row"
+						class="flex flex-row relative"
 						class:flex-row-reverse={!volumeSettings.rightToLeft}
 						style:filter={`invert(${$settings.invertColors ? 1 : 0})`}
 						on:dblclick={onDoubleTap}
 						role="none"
 						id="manga-panel"
 					>
+						<div
+							class="color-temp-overlay"
+							style:background-color={$settings.colorTemperature > 100
+								? 'rgba(255, 165, 0, 0.3)'
+								: 'rgba(0, 191, 255, 0.3)'}
+							style:opacity={Math.abs($settings.colorTemperature - 100) / 100}
+						></div>
 						{#key page}
 							{#if showSecondPage()}
 								<MangaPage
@@ -459,5 +465,15 @@
 		justify-content: center;
 		padding-bottom: 0px;
 		min-height: 500px;
+	}
+	.color-temp-overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		mix-blend-mode: multiply;
+		pointer-events: none;
+		z-index: 1;
 	}
 </style>

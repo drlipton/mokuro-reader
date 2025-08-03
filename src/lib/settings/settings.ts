@@ -66,6 +66,7 @@ export type Settings = {
   splitDoublePages: boolean;
   volumeDefaults: VolumeDefaults;
   ankiConnectSettings: AnkiConnectSettings;
+  colorTemperature: number;
 };
 
 export type SettingsKey = keyof Settings;
@@ -111,7 +112,8 @@ const defaultSettings: Settings = {
     widthField: 0,
     qualityField: 1,
     triggerMethod: 'both'
-  }
+  },
+  colorTemperature: 100,
 };
 
 type Profiles = Record<string, Settings>
