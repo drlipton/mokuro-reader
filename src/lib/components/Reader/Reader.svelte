@@ -387,7 +387,7 @@
 			<div class="flex" style:background-color={$settings.backgroundColor}>
 				<Panzoom>
 					<div
-						class="flex flex-row relative"
+						class="flex flex-row"
 						class:flex-row-reverse={!volumeSettings.rightToLeft}
 						style:filter={`invert(${$settings.invertColors ? 1 : 0})`}
 						on:dblclick={onDoubleTap}
@@ -402,7 +402,17 @@
 							style:opacity={Math.abs($settings.colorTemperature - 100) / 100}
 						></div>
 						{#key page}
-							{#if showSecondPage()}
+							{#if pageVisibility[index]}
+								<MangaPage
+									on:loadcomplete={onPageLoad}
+									page={pages[index]}
+									src={Object.values(loadedVolume?.files)[
+										originalPages.findIndex((op) => op.img_path === pages[index].img_path)
+									]}
+									pageHalf={pages[index].split}
+								/>
+							{/if}
+							{#if showSecondPage() && pageVisibility[index + 1]}
 								<MangaPage
 									on:loadcomplete={onPageLoad}
 									page={pages[index + 1]}
@@ -412,14 +422,6 @@
 									pageHalf={pages[index + 1].split}
 								/>
 							{/if}
-							<MangaPage
-								on:loadcomplete={onPageLoad}
-								page={pages[index]}
-								src={Object.values(loadedVolume?.files)[
-									originalPages.findIndex((op) => op.img_path === pages[index].img_path)
-								]}
-								pageHalf={pages[index].split}
-							/>
 						{/key}
 					</div>
 				</Panzoom>

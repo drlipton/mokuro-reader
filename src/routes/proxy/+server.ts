@@ -33,6 +33,8 @@ export const GET: RequestHandler = async ({ url }) => {
         if (response.headers.get('Content-Length')) {
             newHeaders.set('Content-Length', response.headers.get('Content-Length')!);
         }
+        newHeaders.set('Access-Control-Allow-Origin', '*');
+
 
         // Return the response body directly for efficient streaming
         return new Response(response.body, {
