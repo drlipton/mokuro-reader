@@ -1,29 +1,23 @@
 <script lang="ts">
-  import { A, Fileupload, Label } from 'flowbite-svelte';
+  import { A } from 'flowbite-svelte';
+  import { createEventDispatcher } from 'svelte';
 
-  export let files: FileList | undefined = undefined;
-  export let onUpload: ((files: FileList) => void) | undefined = undefined;
-
+  const dispatch = createEventDispatcher();
   let input: HTMLInputElement;
 
   function handleChange() {
-    if (files && onUpload) {
-      onUpload(files);
+    if (input.files) {
+      dispatch('fileSelected', input.files);
     }
-  }
-
-  function onClick() {
-    input.click();
   }
 </script>
 
 <input
   type="file"
-  bind:files
   bind:this={input}
   on:change={handleChange}
   {...$$restProps}
   class="hidden"
 />
 
-<A on:click={onClick}><slot>Upload</slot></A>
+<A on:click={() => input.click()}><slot>Upload</slot></A>

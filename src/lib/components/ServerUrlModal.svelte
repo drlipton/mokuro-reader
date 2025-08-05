@@ -1,22 +1,29 @@
 <script lang="ts">
-	import { miscSettings, updateMiscSetting } from '$lib/settings';
 	import { Button, Input, Label, Modal } from 'flowbite-svelte';
+    import { createEventDispatcher } from 'svelte';
 
 	export let open = false;
+    const dispatch = createEventDispatcher();
 
-	let serverUrl = $miscSettings.serverUrl;
-	let serverUsername = $miscSettings.serverUsername;
-	let serverPassword = $miscSettings.serverPassword;
+	let serverUrl = '';
+	let serverUsername = '';
+	let serverPassword = '';
 
 	function onSave() {
-		updateMiscSetting('serverUrl', serverUrl);
-		updateMiscSetting('serverUsername', serverUsername);
-		updateMiscSetting('serverPassword', serverPassword);
+		dispatch('save', {
+            url: serverUrl,
+            username: serverUsername,
+            password: serverPassword
+        });
 		open = false;
+        // Reset fields after saving
+        serverUrl = '';
+        serverUsername = '';
+        serverPassword = '';
 	}
 </script>
 
-<Modal title="Set Server URL" bind:open on:close>
+<Modal title="Add Remote Source" bind:open on:close>
 	<div class="flex flex-col gap-4">
 		<div>
 			<Label for="server-url" class="mb-2">Manga Server URL</Label>
@@ -31,6 +38,6 @@
 			<Input id="server-pass" type="password" bind:value={serverPassword} />
 		</div>
 
-		<Button on:click={onSave}>Save</Button>
+		<Button on:click={onSave} disabled={!serverUrl}>Save</Button>
 	</div>
 </Modal>

@@ -12,13 +12,20 @@
   let promise: Promise<void>;
   let files: FileList | undefined = undefined;
 
+  function handleFileSelect(event: CustomEvent<FileList>) {
+    files = event.detail;
+  }
+
   async function onUpload() {
-    if (files) {
-      promise = processFiles([...files]).then(() => {
-        open = false;
-      });
-    } else if (draggedFiles) {
-      promise = processFiles(draggedFiles).then(() => {
+    let filesToProcess: File[] = [];
+    if (files && files.length > 0) {
+      filesToProcess = [...files];
+    } else if (draggedFiles && draggedFiles.length > 0) {
+      filesToProcess = draggedFiles;
+    }
+
+    if (filesToProcess.length > 0) {
+      promise = processFiles(filesToProcess).then(() => {
         open = false;
       });
     }
@@ -38,11 +45,11 @@
       }
     });
   });
-
+  
   let filePromises: Promise<File>[];
   let draggedFiles: File[] | undefined;
   let loading = false;
-  $: disabled = loading || (!draggedFiles && !files);
+  $: disabled = loading || (!draggedFiles && (!files || files.length === 0));
 
   const dropHandle = async (event: DragEvent) => {
     loading = true;
@@ -61,28 +68,25 @@
             const file = item.getAsFile();
             if (file) {
               draggedFiles.push(file);
-              draggedFiles = draggedFiles;
             }
           }
         }
       }
 
       if (filePromises && filePromises.length > 0) {
-        const files = await Promise.all(filePromises);
-        if (files) {
-          draggedFiles = [...draggedFiles, ...files];
-        }
+        const resolvedFiles = await Promise.all(filePromises);
+        draggedFiles = [...(draggedFiles || []), ...resolvedFiles.filter(f => f)];
       }
     }
-
+    // After dropping files, clear any selection from the input buttons
+    files = undefined; 
     loading = false;
   };
 
   let defaultStyle =
-    'flex flex-col justify-center items-center w-full h-64 bg-gray-50 rounded-lg border-2 border-gray-300 border-dashed cursor-pointer dark:hover:bg-bray-800 dark:bg-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-600';
+    'flex flex-col justify-center items-center w-full h-48 bg-gray-50 rounded-lg border-2 border-gray-300 border-dashed cursor-pointer dark:hover:bg-bray-800 dark:bg-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:hover:border-gray-500 dark:hover:bg-gray-600';
   let highlightStyle =
-    'flex flex-col justify-center items-center w-full h-64 bg-gray-50 rounded-lg border-2 border-gray-300 border-dashed cursor-pointer dark:bg-bray-800 dark:bg-gray-700 bg-gray-100 dark:border-gray-600 dark:border-gray-500 dark:bg-gray-600';
-
+    'flex flex-col justify-center items-center w-full h-48 bg-gray-50 rounded-lg border-2 border-gray-300 border-dashed cursor-pointer dark:bg-bray-800 dark:bg-gray-700 bg-gray-100 dark:border-gray-600 dark:border-gray-500 dark:bg-gray-600';
   let activeStyle = defaultStyle;
 </script>
 
@@ -97,8 +101,8 @@
         <div class="flex flex-col gap-5">
           <div>
             <p>
-              Firstly, ensure that you process your manga with the <b>0.2.0-beta.6</b> of mokuro, you
-              can install it by running the following command:
+              Process your manga with the <b>0.2.0-beta.6</b> of mokuro, which you
+              can install by running the following command:
             </p>
             <div role="none" on:click={toClipboard}>
               <code class="text-primary-600 bg-slate-900"
@@ -107,17 +111,13 @@
             </div>
           </div>
           <p>
-            This will generate a <code>.mokuro</code> file for each volume processed, upload your
+            This will generate a <code>.mokuro</code> file for each volume processed. Upload your
             manga along with the <code>.mokuro</code> files.
-          </p>
-          <p>
-            On mobile, uploading via directory is not supported so you will need to zip your manga
-            first and then upload it via
-            <code class="text-primary-600 bg-slate-900">choose files</code>.
           </p>
         </div>
       </AccordionItem>
     </Accordion>
+
     <Dropzone
       id="dropzone"
       on:drop={dropHandle}
@@ -129,49 +129,51 @@
         event.preventDefault();
         activeStyle = defaultStyle;
       }}
-      on:click={(event) => {
-        event.preventDefault();
-      }}
       defaultClass={activeStyle}
+      class="mb-4"
     >
-      <svg
-        aria-hidden="true"
-        class="mb-3 w-10 h-10 text-gray-400"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-        xmlns="http://www.w3.org/2000/svg"
-        ><path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-        /></svg
-      >
-      {#if files}
-        <p class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-          Upload {files.length}
-          {files.length > 1 ? 'files' : 'file'}?
-        </p>
-      {:else if draggedFiles && draggedFiles.length > 0}
-        <p class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-          Upload {draggedFiles.length} hih
-          {draggedFiles.length > 1 ? 'files' : 'file'}?
-        </p>
-      {:else if loading}
-        <Spinner />
-      {:else}
-        <p class="mb-2 text-sm text-gray-500 dark:text-gray-400">
-          Drag and drop / <FileUpload bind:files accept=".mokuro,.zip,.cbz" multiple
-            >choose files</FileUpload
-          > /
-          <FileUpload bind:files webkitdirectory>choose directory</FileUpload>
-        </p>
-      {/if}
+        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+             <svg
+                aria-hidden="true"
+                class="w-8 h-8 mb-4 text-gray-500 dark:text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+                ><path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                /></svg
+            >
+            <p class="mb-2 text-sm text-gray-500 dark:text-gray-400">
+                <span class="font-semibold">Drag and drop</span>
+            </p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">ZIP, CBZ, or folders</p>
+        </div>
     </Dropzone>
-    <p class=" text-sm text-gray-500 dark:text-gray-400 text-center">{storageSpace}</p>
-    <div class="flex flex-1 flex-col gap-2">
-      <Button outline on:click={reset} {disabled} color="dark">Reset</Button>
+    
+    <div class="flex justify-center gap-4 mb-4">
+        <FileUpload on:fileSelected={handleFileSelect} accept=".mokuro,.zip,.cbz" multiple>
+            <Button color="alternative">Choose Files</Button>
+        </FileUpload>
+        <FileUpload on:fileSelected={handleFileSelect} webkitdirectory>
+            <Button color="alternative">Choose Directory</Button>
+        </FileUpload>
+    </div>
+
+    <div class="text-center text-sm text-gray-500 dark:text-gray-400 mb-4 h-6">
+        {#if files && files.length > 0}
+            <span>{files.length} {files.length > 1 ? 'files' : 'file'} selected</span>
+        {:else if draggedFiles && draggedFiles.length > 0}
+            <span>{draggedFiles.length} {draggedFiles.length > 1 ? 'files' : 'file'} dropped</span>
+        {/if}
+    </div>
+
+    <p class="text-sm text-gray-500 dark:text-gray-400 text-center">{storageSpace}</p>
+    <div class="flex flex-1 flex-col gap-2 mt-4">
+      <Button outline on:click={reset} color="dark">Reset</Button>
       <Button outline on:click={onUpload} {disabled}>Upload</Button>
     </div>
   {/await}

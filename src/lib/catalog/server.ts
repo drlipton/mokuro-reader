@@ -5,7 +5,11 @@ import { get } from 'svelte/store';
 import { db } from './db';
 import { resizeImage } from '$lib/util/image';
 
-// Function to construct the proxy URL with authentication parameters
+export type ServerVolumeInfo = {
+    name: string;
+    hasMokuro: boolean;
+};
+
 export function getProxyUrl(targetUrl: string): string {
     const settings = get(miscSettings);
     let proxyUrl = `/proxy?url=${encodeURIComponent(targetUrl)}`;
@@ -25,18 +29,35 @@ export async function fetchServerMangaList(serverUrl: string): Promise<string[]>
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
 
         const html = await response.text();
-        const items = getItems(html);
+        // Pass the serverUrl as the base for resolving relative paths
+        const items = getItems(html, serverUrl);
+        const serverURLObject = new URL(serverUrl);
 
         return items
             .map((item) => {
-                let name = item.pathname;
-                if (name.endsWith('/')) {
-                    name = name.replace(/^\/|\/$/g, '');
-                    return decodeURIComponent(name);
+                // Ensure we only process links from the same origin
+                if (item.origin !== serverURLObject.origin) {
+                    return null;
                 }
-                return null;
+
+                let name = item.pathname;
+                // We are only interested in directory links
+                if (!name.endsWith('/')) {
+                    return null;
+                }
+
+                // Remove the base path of the server URL itself
+                const serverPath = serverURLObject.pathname;
+                if (name.startsWith(serverPath)) {
+                    name = name.substring(serverPath.length);
+                }
+
+                // Clean up any remaining leading/trailing slashes
+                name = name.replace(/^\/|\/$/g, '');
+
+                return decodeURIComponent(name);
             })
-            .filter((name): name is string => name !== null && name !== '..' && !name.startsWith('.'));
+            .filter((name): name is string => name !== null && name !== '..' && !name.startsWith('.') && name !== '');
 
     } catch (error) {
         console.error('Error fetching server manga list:', error);
@@ -44,7 +65,7 @@ export async function fetchServerMangaList(serverUrl: string): Promise<string[]>
     }
 }
 
-export async function fetchServerVolumeList(serverUrl: string, mangaName: string): Promise<string[]> {
+export async function fetchServerVolumeList(serverUrl: string, mangaName: string): Promise<ServerVolumeInfo[]> {
     if (!serverUrl || !mangaName) return [];
 
     const mangaUrl = `${serverUrl.replace(/\/$/, '')}/${encodeURIComponent(mangaName)}/`;
@@ -54,20 +75,37 @@ export async function fetchServerVolumeList(serverUrl: string, mangaName: string
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
 
         const html = await response.text();
-        const items = getItems(html);
+        const items = getItems(html, mangaUrl);
 
-        const volumes = items
-            .map((item) => {
-                let name = item.pathname.split('/').pop();
-                if (name && name.toLowerCase().endsWith('.mokuro')) {
-                    return decodeURIComponent(name.slice(0, -7));
+        const mokuroFiles = new Set<string>();
+        const directories = new Set<string>();
+
+        items.forEach((item) => {
+            const href = item.getAttribute('href');
+            if (!href) return;
+
+            // Look for mokuro files
+            if (href.toLowerCase().endsWith('.mokuro')) {
+                const name = decodeURIComponent(href.slice(0, -7));
+                mokuroFiles.add(name);
+            } 
+            // Look for directories
+            else if (href.endsWith('/')) {
+                const name = decodeURIComponent(href.replace(/\/$/, ''));
+                if (name && !name.startsWith('..') && !name.startsWith('?')) {
+                   directories.add(name);
                 }
-                return null;
-            })
-            .filter((name): name is string => name !== null);
+            }
+        });
+        
+        const allPossibleVolumes = new Set([...mokuroFiles, ...directories]);
+        
+        const volumeInfo: ServerVolumeInfo[] = Array.from(allPossibleVolumes).map(name => ({
+            name: name,
+            hasMokuro: mokuroFiles.has(name)
+        }));
 
-        // Sort volumes alphanumerically to ensure a consistent order
-        return volumes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+        return volumeInfo.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
     } catch (error) {
         console.error(`Error fetching volumes for ${mangaName}:`, error);
@@ -80,10 +118,9 @@ export async function fetchServerMangaInfo(serverUrl: string, mangaName: string)
 
     const cacheId = `remote-${serverUrl}-${mangaName}`;
     
-    // 1. Check for a cached thumbnail
     const cached = await db.thumbnails.get(cacheId);
     if (cached) {
-        return { coverArt: URL.createObjectURL(cached.thumbnail), volumeCount: 0 }; // volumeCount not needed here
+        return { coverArt: URL.createObjectURL(cached.thumbnail), volumeCount: 0 };
     }
 
     try {
@@ -111,12 +148,11 @@ export async function fetchServerMangaInfo(serverUrl: string, mangaName: string)
         const coverImagePath = mokuroData.pages[0].img_path;
         const coverArtUrl = `${serverUrl.replace(/\/$/, '')}/${encodedManga}/${encodedVolume}/${coverImagePath}`;
 
-        // 2. Fetch, resize, and cache the thumbnail
         const imageResponse = await fetch(getProxyUrl(coverArtUrl));
         if (!imageResponse.ok) return { coverArt: '', volumeCount: volumes.length };
 
         const imageBlob = await imageResponse.blob();
-        const thumbnailBlob = await resizeImage(imageBlob, 250, 350); // Resize to match catalog item size
+        const thumbnailBlob = await resizeImage(imageBlob, 250, 350);
         
         await db.thumbnails.put({ id: cacheId, thumbnail: thumbnailBlob });
         

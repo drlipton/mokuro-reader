@@ -9,8 +9,8 @@
 		ZoomOutOutline,
 		UserSettingsSolid,
 	} from 'flowbite-svelte-icons';
-	import { toggleFullScreen, zoomFitToScreen } from '$lib/panzoom';
-	import { settings, updateSetting } from '$lib/settings';
+	import { toggleFullScreen, zoomDefault } from '$lib/panzoom';
+	import { settings } from '$lib/settings';
 	import { imageToWebp, showCropper, updateLastCard } from '$lib/anki-connect';
 	import { promptConfirmation } from '$lib/util';
 	import Settings from '$lib/components/Settings/Settings.svelte';
@@ -19,21 +19,28 @@
 	export let pages: any[];
 	export let currentPage: number;
 	export let isRtl: boolean;
-	export let src1: File | undefined;
-	export let src2: File | undefined;
+	export let src1: File | string | undefined;
+	export let src2: File | string | undefined;
+    export let hasMokuro: boolean;
 
 	const dispatch = createEventDispatcher();
-
 	let settingsHidden = true;
 
+    // Use a local variable for the slider to prevent illegal two-way binding
+    let sliderValue = currentPage;
+    $: sliderValue = currentPage; // Keep it in sync with the prop from the parent
+
 	function onManualPageChange() {
-		dispatch('pageChange', currentPage);
+		dispatch('pageChange', sliderValue);
 	}
 
-	async function onUpdateCard(src: File | undefined) {
+	async function onUpdateCard(src: File | string | undefined) {
+        if (!src) return;
+
 		if ($settings.ankiConnectSettings.enabled && src) {
+            const objectURL = src instanceof File ? URL.createObjectURL(src) : src;
 			if ($settings.ankiConnectSettings.cropImage) {
-				showCropper(URL.createObjectURL(src));
+				showCropper(objectURL);
 			} else {
 				promptConfirmation('Add image to last created anki card?', async () => {
 					const imageData = await imageToWebp(src, $settings);
@@ -66,7 +73,7 @@
 					<Range
 						min={1}
 						max={pages.length}
-						bind:value={currentPage}
+						bind:value={sliderValue}
 						on:change={onManualPageChange}
 						class="w-full"
 					/>
@@ -74,15 +81,7 @@
 			</div>
 
 			<div class="flex-1 flex justify-end items-center gap-1">
-				<Tooltip>Toggle Vertical Scroll</Tooltip>
-				<Button
-					on:click={() => updateSetting('verticalScrolling', !$settings.verticalScrolling)}
-					color="none"
-					class="text-white hover:bg-gray-700 p-2 rounded-full {$settings.verticalScrolling ? '!text-primary-500' : ''}"
-				>
-				</Button>
-
-				{#if $settings.ankiConnectSettings.enabled}
+				{#if hasMokuro && $settings.ankiConnectSettings.enabled}
 					<Tooltip>Anki Card from Page 1</Tooltip>
 					<Button on:click={() => onUpdateCard(src1)} color="none" class="text-white hover:bg-gray-700 p-2 rounded-full">
 						<ImageOutline />
@@ -99,7 +98,7 @@
 					<CompressOutline />
 				</Button>
 				<Tooltip>Fit to Screen</Tooltip>
-				<Button on:click={zoomFitToScreen} color="none" class="text-white hover:bg-gray-700 p-2 rounded-full">
+				<Button on:click={zoomDefault} color="none" class="text-white hover:bg-gray-700 p-2 rounded-full">
 					<ZoomOutOutline />
 				</Button>
 				<Tooltip>Settings</Tooltip>
