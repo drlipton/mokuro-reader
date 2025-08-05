@@ -64,6 +64,7 @@ export type Settings = {
   verticalScrolling: boolean;
   autoCrop: boolean;
   splitDoublePages: boolean;
+  pageBuffer: number;
   volumeDefaults: VolumeDefaults;
   ankiConnectSettings: AnkiConnectSettings;
   colorTemperature: number;
@@ -96,6 +97,7 @@ const defaultSettings: Settings = {
   verticalScrolling: false,
   autoCrop: false,
   splitDoublePages: false,
+  pageBuffer: 2,
   volumeDefaults: {
     singlePageView: false,
     rightToLeft: true,

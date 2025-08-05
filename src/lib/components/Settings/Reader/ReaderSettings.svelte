@@ -7,6 +7,8 @@
   let swipeThresholdValue = $settings.swipeThreshold;
   let edgeButtonWidthValue = $settings.edgeButtonWidth;
   let colorTemperatureValue = $settings.colorTemperature;
+  let pageBufferValue = $settings.pageBuffer;
+
   function onSwipeChange() {
     updateSetting('swipeThreshold', swipeThresholdValue);
   }
@@ -17,6 +19,9 @@
   function onColorTempChange() {
     updateSetting('colorTemperature', colorTemperatureValue);
   }
+  function onPageBufferChange() {
+    updateSetting('pageBuffer', pageBufferValue);
+  }
 </script>
 
 <AccordionItem>
@@ -25,6 +30,15 @@
     <ReaderSelects />
     <hr class="border-gray-100 opacity-10" />
     <ReaderToggles />
+    <div>
+      <Label>Page preload buffer (vertical scrolling only)</Label>
+      <Range
+        on:change={onPageBufferChange}
+        min={1}
+        max={10}
+        bind:value={pageBufferValue}
+      />
+    </div>
     <div>
       <Label>Swipe threshold</Label>
       <Range

@@ -7,9 +7,18 @@
   import { miscSettings, updateMiscSetting } from '$lib/settings';
   import { Button, Listgroup, Search } from 'flowbite-svelte';
   import { GridOutline, ListOutline, SortOutline, UploadOutline } from 'flowbite-svelte-icons';
+  import { onMount } from 'svelte';
 
   let search = '';
   let uploadModalOpen = false;
+
+  onMount(() => {
+    // This will reload the page once per session to ensure the catalog is loaded.
+    if (!sessionStorage.getItem('local_reloaded')) {
+      sessionStorage.setItem('local_reloaded', 'true');
+      location.reload();
+    }
+  });
 
   $: filteredLocalCatalog =
     $catalog
@@ -21,7 +30,8 @@
         }
       })
       .filter((item) => {
-        return item.manga[0].mokuroData.title.toLowerCase().indexOf(search.toLowerCase()) !== -1;
+        return item.manga[0].mokuroData.title.toLowerCase().indexOf(search.toLowerCase()) !== 
+-1;
       }) || [];
 
   function onLayout() {
@@ -52,7 +62,8 @@
       <SortOutline />
     </Button>
     <Button size="sm" color="alternative" on:click={() => (uploadModalOpen = true)}>
-      <UploadOutline />
+ 
+     <UploadOutline />
     </Button>
   </div>
 
@@ -65,13 +76,14 @@
       {:else}
         <div class="flex sm:flex-row flex-col gap-5 flex-wrap justify-center sm:justify-start">
           {#if $miscSettings.galleryLayout === 'grid'}
-            {#each filteredLocalCatalog as { id } (id)}
+           {#each filteredLocalCatalog as { id } (id)}
               <CatalogItem {id} />
             {/each}
           {:else}
             <Listgroup active class="w-full">
               {#each filteredLocalCatalog as { id } (id)}
-                <CatalogListItem {id} />
+             
+               <CatalogListItem {id} />
               {/each}
             </Listgroup>
           {/if}
@@ -84,5 +96,6 @@
     {/if}
   {:else}
     <Loader>Fetching local catalog...</Loader>
-  {/if}
+  
+{/if}
 </div>

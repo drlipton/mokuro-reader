@@ -1,10 +1,7 @@
 <script lang="ts">
 	import {
-		Panzoom,
-		panzoomStore,
 		toggleFullScreen,
 		zoomDefault,
-		zoomFitToScreen
 	} from '$lib/panzoom';
 	import { progress, settings, updateProgress, type VolumeSettings } from '$lib/settings';
 	import { clamp, debounce, fireExstaticEvent } from '$lib/util';
@@ -114,8 +111,8 @@
 	$: {
 		const newVisibility = Array(pages.length).fill(false);
 		if ($settings.verticalScrolling) {
-			const startIndex = Math.max(0, index - 1);
-			const endIndex = Math.min(pages.length - 1, index + 1);
+			const startIndex = Math.max(0, index - $settings.pageBuffer);
+			const endIndex = Math.min(pages.length - 1, index + $settings.pageBuffer);
 			for (let i = startIndex; i <= endIndex; i++) {
 				newVisibility[i] = true;
 			}
@@ -143,7 +140,6 @@
 		pagesToLoad--;
 		if (pagesToLoad <= 0) {
 			await tick();
-			// zoomDefault(); // panzoom is removed
 		}
 	}
 
@@ -328,11 +324,7 @@
 	}
 
 	function onDoubleTap(event: MouseEvent) {
-		if (!$settings.mobile || !panzoomStore) return;
-		const { clientX, clientY } = event;
-		const { scale } = $panzoomStore.getTransform();
-		if (scale < 1) $panzoomStore.zoomTo(clientX, clientY, 1.5);
-		else zoomFitToScreen();
+		// onDoubleTap is not needed without panzoom
 	}
 
 	function fireReaderClosedEvent() {
@@ -353,7 +345,7 @@
 </script>
 
 <svelte:window
-	on:resize={$settings.verticalScrolling ? null : zoomDefault}
+	on:resize={zoomDefault}
 	on:keyup={handleShortcuts}
 	on:touchstart={$settings.verticalScrolling ? null : handleTouchStart}
 	on:touchend={$settings.verticalScrolling ? null : handlePointerUp}
