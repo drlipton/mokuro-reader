@@ -18,7 +18,8 @@
 	let containerWidth: number;
 	let panzoom: PanzoomObject | null = null;
 	let sourceFile: File | Blob | null = null;
-	let isDestroyed = false; // Flag to track component lifecycle
+	let isDestroyed = false;
+	// Flag to track component lifecycle
 
 	// State for crop offsets and new dimensions
 	let cropOffsetX = 0;
@@ -34,7 +35,6 @@
 			panzoom = zoomDefault(containerEl);
 		}
 	});
-
 	onDestroy(() => {
 		isDestroyed = true; // Set the flag when component is destroyed
 		if (panzoom) {
@@ -42,7 +42,6 @@
 		}
 		console.log(`Unloaded page: ${page.img_path}`);
 	});
-
 	async function handleSource() {
 		if (typeof src === 'string') {
 			try {
@@ -67,7 +66,8 @@
 		if (pageHalf) {
 			const image = new Image();
 			const objectUrl = URL.createObjectURL(file);
-			const splitBlob = await new Promise<Blob | null>((resolve) => {
+			const splitBlob = await new Promise<Blob |
+			null>((resolve) => {
 				image.onload = () => {
 					URL.revokeObjectURL(objectUrl);
 					if (isDestroyed) return resolve(null);
@@ -126,10 +126,11 @@
 		const finalUrl = URL.createObjectURL(finalBlob);
 		finalImage.onload = async () => {
 			URL.revokeObjectURL(finalUrl);
-			if (isDestroyed) return; // FIX: Check if component is destroyed
+			if (isDestroyed) return;
 			
 			croppedWidth = finalImage.width;
 			croppedHeight = finalImage.height;
+            await tick(); // Wait for svelte to bind the canvas element
 			renderCanvas(finalImage);
 			loading = false;
 			await tick();
@@ -139,7 +140,7 @@
 		};
 		finalImage.onerror = () => {
 			URL.revokeObjectURL(finalUrl);
-			if (isDestroyed) return; // FIX: Check if component is destroyed
+			if (isDestroyed) return;
 			loading = false;
 			dispatch('loadcomplete'); // Dispatch even on error to unblock reader
 		};
@@ -147,7 +148,10 @@
 	}
 
 	function renderCanvas(image: HTMLImageElement) {
-		if (!canvasEl) return; // Guard against null canvas element
+		if (!canvasEl) {
+            console.warn(`renderCanvas called for ${page.img_path}, but canvas element was not ready.`);
+            return;
+        };
 		const ctx = canvasEl.getContext('2d');
 		if (!ctx) return;
 

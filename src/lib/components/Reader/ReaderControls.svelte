@@ -21,14 +21,13 @@
 	export let isRtl: boolean;
 	export let src1: File | string | undefined;
 	export let src2: File | string | undefined;
-    export let hasMokuro: boolean;
+	export let hasMokuro: boolean;
 
 	const dispatch = createEventDispatcher();
 	let settingsHidden = true;
-
-    // Use a local variable for the slider to prevent illegal two-way binding
+	// Use a local variable for the slider to prevent illegal two-way binding
     let sliderValue = currentPage;
-    $: sliderValue = currentPage; // Keep it in sync with the prop from the parent
+	$: sliderValue = currentPage; // Keep it in sync with the prop from the parent
 
 	function onManualPageChange() {
 		dispatch('pageChange', sliderValue);
@@ -36,7 +35,6 @@
 
 	async function onUpdateCard(src: File | string | undefined) {
         if (!src) return;
-
 		if ($settings.ankiConnectSettings.enabled && src) {
             const objectURL = src instanceof File ? URL.createObjectURL(src) : src;
 			if ($settings.ankiConnectSettings.cropImage) {

@@ -10,7 +10,6 @@ export type ServerVolumeInfo = {
     hasMokuro: boolean;
 };
 
-// Function to construct the proxy URL with authentication parameters
 export function getProxyUrl(targetUrl: string): string {
     const settings = get(miscSettings);
     let proxyUrl = `/proxy?url=${encodeURIComponent(targetUrl)}`;
@@ -30,26 +29,35 @@ export async function fetchServerMangaList(serverUrl: string): Promise<string[]>
         if (!response.ok) throw new Error(`Server returned ${response.status}`);
 
         const html = await response.text();
+        // Pass the serverUrl as the base for resolving relative paths
         const items = getItems(html, serverUrl);
         const serverURLObject = new URL(serverUrl);
 
         return items
             .map((item) => {
+                // Ensure we only process links from the same origin
                 if (item.origin !== serverURLObject.origin) {
                     return null;
                 }
+
                 let name = item.pathname;
+                // We are only interested in directory links
                 if (!name.endsWith('/')) {
                     return null;
                 }
+
+                // Remove the base path of the server URL itself
                 const serverPath = serverURLObject.pathname;
                 if (name.startsWith(serverPath)) {
                     name = name.substring(serverPath.length);
                 }
+
+                // Clean up any remaining leading/trailing slashes
                 name = name.replace(/^\/|\/$/g, '');
+
                 return decodeURIComponent(name);
             })
-            .filter((name): name is string => name !== null && name !== '' && name !== '..' && !name.startsWith('.'));
+            .filter((name): name is string => name !== null && name !== '..' && !name.startsWith('.') && name !== '');
 
     } catch (error) {
         console.error('Error fetching server manga list:', error);
@@ -68,28 +76,24 @@ export async function fetchServerVolumeList(serverUrl: string, mangaName: string
 
         const html = await response.text();
         const items = getItems(html, mangaUrl);
-        const mangaURLObject = new URL(mangaUrl);
 
         const mokuroFiles = new Set<string>();
         const directories = new Set<string>();
 
         items.forEach((item) => {
-            if (item.origin !== mangaURLObject.origin) return;
+            const href = item.getAttribute('href');
+            if (!href) return;
 
-            let pathname = item.pathname;
-            const mangaPath = mangaURLObject.pathname;
-            
-            if (!pathname.startsWith(mangaPath)) return;
-            
-            let name = pathname.substring(mangaPath.length);
-
-            if (name.toLowerCase().endsWith('.mokuro')) {
-                const volName = decodeURIComponent(name.slice(0, -7));
-                if (volName) mokuroFiles.add(volName);
-            } else if (name.endsWith('/')) {
-                const volName = decodeURIComponent(name.replace(/\/$/, ''));
-                if (volName && !volName.startsWith('..') && !volName.startsWith('?')) {
-                   directories.add(volName);
+            // Look for mokuro files
+            if (href.toLowerCase().endsWith('.mokuro')) {
+                const name = decodeURIComponent(href.slice(0, -7));
+                mokuroFiles.add(name);
+            } 
+            // Look for directories
+            else if (href.endsWith('/')) {
+                const name = decodeURIComponent(href.replace(/\/$/, ''));
+                if (name && !name.startsWith('..') && !name.startsWith('?')) {
+                   directories.add(name);
                 }
             }
         });
@@ -124,13 +128,8 @@ export async function fetchServerMangaInfo(serverUrl: string, mangaName: string)
         if (volumes.length === 0) {
             return { coverArt: '', volumeCount: 0 };
         }
-        
-        const firstVolumeWithMokuro = volumes.find(v => v.hasMokuro);
-        if (!firstVolumeWithMokuro) {
-             return { coverArt: '', volumeCount: volumes.length };
-        }
-        
-        const firstVolumeName = firstVolumeWithMokuro.name;
+        const firstVolumeName = volumes[0];
+
         const encodedManga = encodeURIComponent(mangaName);
         const encodedVolume = encodeURIComponent(firstVolumeName);
         const mokuroUrl = `${serverUrl.replace(/\/$/, '')}/${encodedManga}/${encodedVolume}.mokuro`;

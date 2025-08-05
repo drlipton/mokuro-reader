@@ -21,7 +21,7 @@
     let count: undefined | number = undefined;
     let loadedVolume: Volume | undefined | null = undefined;
     let uniqueVolumeId: string;
-
+	
     $: if (source === 'server' && ($miscSettings.serverUrl || sourceUrlFromParam)) {
         const serverUrlForId = sourceUrlFromParam || $miscSettings.serverUrl;
         uniqueVolumeId = `${serverUrlForId}/${mangaName}/${volumeIdParam}`;
@@ -65,7 +65,6 @@
                 const volumeFromStore = $catalog
                     ?.find((item) => item.id === mangaName)
                     ?.manga.find((item) => item.mokuroData?.volume_uuid === volumeIdParam || item.volumeName === volumeIdParam);
-                
                 if (volumeFromStore) {
                     // Create a shallow copy to break the direct reactive link to the store
                     // This prevents potential "Assignment to constant variable" errors in the Reader
@@ -118,7 +117,6 @@
 
         const mokuroData: MokuroData = await response.json();
         mokuroData.volume_uuid = uniqueVolumeId;
-
         const files: Record<string, string> = {};
         const imageBaseUrl = `${serverUrl}/${encodedManga}/${encodedVolume}`;
         mokuroData.pages.forEach((page) => {
@@ -168,6 +166,7 @@
             });
         }
         
+        // This is the updated part: create a valid Volume object without mokuroData
         loadedVolume = {
             volumeName: volumeIdParam,
             files

@@ -67,7 +67,7 @@ const performUpload = debounce(() => {
     }).catch(error => {
         console.error('Sync: Automatic upload failed.', error);
     });
-}, 3000); 
+}, 3000);
 
 
 volumes.subscribe((volumes) => {
@@ -80,18 +80,14 @@ volumes.subscribe((volumes) => {
 export function initializeVolume(volumeId: string) {
   const volumesStore = get(volumes);
 
-  // If a record for this volume already exists, do nothing.
-  // Its progress is already being tracked correctly.
   if (volumesStore[volumeId]) {
     return;
   }
 
-  // If it's a new volume, create a default entry for it.
   const volumeDefaults = get(settings).volumeDefaults;
   const { hasCover, rightToLeft, singlePageView } = volumeDefaults;
 
   volumes.update((prev) => {
-    // Double-check inside the update to prevent race conditions
     if (prev[volumeId]) return prev;
 
     return {
@@ -99,7 +95,7 @@ export function initializeVolume(volumeId: string) {
       [volumeId]: {
         chars: 0,
         completed: false,
-        progress: 1, // Always start new volumes at page 1
+        progress: 1,
         timeReadInMinutes: 0,
         settings: {
           hasCover,
@@ -125,12 +121,17 @@ export function clearVolumes() {
 
 export function updateProgress(volume: string, progress: number, chars?: number, completed = false) {
   volumes.update((prev) => {
+    // FIX: Add a guard to prevent crash if volume is not yet initialized
+    if (!prev[volume]) {
+        console.warn(`Attempted to update progress for uninitialized volume: ${volume}`);
+        return prev;
+    }
     return {
       ...prev,
       [volume]: {
-        ...prev?.[volume],
+        ...prev[volume],
         progress,
-        chars: chars || prev?.[volume].chars,
+        chars: chars || prev[volume].chars,
         completed,
         lastRead: Date.now()
       }
@@ -141,18 +142,17 @@ export function updateProgress(volume: string, progress: number, chars?: number,
 export function startCount(volume: string) {
   return setInterval(() => {
     volumes.update((prev) => {
+       if (!prev[volume]) return prev;
       return {
         ...prev,
         [volume]: {
-          ...prev?.[volume],
-          timeReadInMinutes: prev?.[volume].timeReadInMinutes + 1
+          ...prev[volume],
+          timeReadInMinutes: prev[volume].timeReadInMinutes + 1
         }
       };
     });
   }, 60 * 1000)
 }
-
-
 
 export const progress = derived(volumes, ($volumes) => {
   const progress: Progress = {}
@@ -180,6 +180,7 @@ export const volumeSettings = derived(volumes, ($volumes) => {
 
 export function updateVolumeSetting(volume: string, key: VolumeSettingsKey, value: any) {
   volumes.update((prev) => {
+    if (!prev[volume]) return prev;
     return {
       ...prev,
       [volume]: {
