@@ -39,7 +39,6 @@
 
 	// ----------------- Derived State -----------------
 	$: hasMokuro = !!loadedVolume?.mokuroData;
-
 	// FIX: This logic now safely handles both mokuro and image-only volumes.
 	$: pages = (() => {
 		if (hasMokuro && loadedVolume.mokuroData) {
@@ -69,7 +68,6 @@
 		}
 		return [];
 	})();
-	
 	$: originalPages = loadedVolume?.mokuroData?.pages || [];
 	$: uniqueVolumeId = loadedVolume?.mokuroData?.volume_uuid || `${$pageStore.url.pathname}`;
 	$: page = ($progress?.[uniqueVolumeId] as number) || 1;
@@ -121,11 +119,11 @@
 			for (let i = startIndex; i <= endIndex; i++) {
 				newVisibility[i] = true;
 			}
-			newVisibility[index] = true;
 		} else {
-			newVisibility[index] = true;
-			if (showSecondPage()) {
-				newVisibility[index + 1] = true;
+			const startIndex = Math.max(0, index - PAGE_BUFFER);
+			const endIndex = Math.min(pages.length - 1, index + 1 + PAGE_BUFFER);
+			for (let i = startIndex; i <= endIndex; i++) {
+				newVisibility[i] = true;
 			}
 		}
 		pageVisibility = newVisibility;
@@ -200,6 +198,7 @@
 	function handleIntersect(entries: IntersectionObserverEntry[]) {
 		const intersectingEntries = entries.filter((e) => e.isIntersecting);
 		if (intersectingEntries.length === 0) return;
+
 		const mostVisibleEntry = intersectingEntries.reduce((prev, current) =>
 			prev.intersectionRatio > current.intersectionRatio ? prev : current
 		);
@@ -259,7 +258,6 @@
 				hasMokuro ? getCharCount(pages, pageClamped).charCount : 0,
 				pageClamped >= pages.length - 1
 			);
-
 			if ($settings.verticalScrolling) {
 				const element = document.querySelector<HTMLElement>(`[data-page-index="${pageClamped - 1}"]`);
 				if (element) element.scrollIntoView({ block: 'start', behavior: 'smooth' });

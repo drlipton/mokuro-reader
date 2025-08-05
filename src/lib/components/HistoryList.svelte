@@ -24,6 +24,7 @@
     href?: string;
     sourceUrl?: string;
     isAvailable: boolean;
+    hasMokuro?: boolean;
   };
 
   // --- STATE ---
@@ -98,7 +99,7 @@
             
             return {
                 id, ...data, isRemote, mangaTitle, volumeName, sourceUrl,
-                href: `/${encodeURIComponent(mangaTitle)}/${encodeURIComponent(volumeName)}?source=server&sourceUrl=${encodeURIComponent(sourceUrl)}`,
+                href: `/${encodeURIComponent(mangaTitle)}/${encodeURIComponent(volumeName)}?source=server&hasMokuro=${data.hasMokuro}&sourceUrl=${encodeURIComponent(sourceUrl)}`,
                 isAvailable: availableSources.includes(sourceUrl)
             };
         } else {
@@ -151,7 +152,7 @@
     </div>
   {:else if historyItems.length === 0}
     <div class="text-center p-20">
-        <p>No reading history yet.</p>
+       <p>No reading history yet.</p>
         <p class="text-gray-500">Start reading a manga to see it here.</p>
     </div>
   {:else if filteredHistory.length === 0}
@@ -189,7 +190,7 @@
             <img src={item.coverArtUrl} alt="Cover for {item.volumeName}" class="w-16 h-24 object-cover rounded flex-shrink-0" />
           {/if}
           <div class="flex-1 overflow-hidden">
-            <p class="font-semibold truncate text-white" title={item.mangaTitle}>{item.mangaTitle}</p>
+           <p class="font-semibold truncate text-white" title={item.mangaTitle}>{item.mangaTitle}</p>
             <p class="text-sm text-gray-400 truncate" title={item.volumeName}>{item.volumeName}</p>
              <p class="text-xs text-gray-500 mt-1">{formatDate(item.lastRead)}</p>
             <div class="text-xs mt-2 flex items-center gap-2 flex-wrap">

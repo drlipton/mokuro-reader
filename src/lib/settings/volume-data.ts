@@ -25,6 +25,7 @@ type VolumeData = {
   settings: VolumeSettings;
   totalPages?: number;
   lastRead?: number;
+  hasMokuro?: boolean;
 }
 
 type TotalStats = {
@@ -124,7 +125,7 @@ export function updateProgress(volume: string, progress: number, chars?: number,
     // FIX: Add a guard to prevent crash if volume is not yet initialized
     if (!prev[volume]) {
         console.warn(`Attempted to update progress for uninitialized volume: ${volume}`);
-        return prev;
+        initializeVolume(volume);
     }
     return {
       ...prev,

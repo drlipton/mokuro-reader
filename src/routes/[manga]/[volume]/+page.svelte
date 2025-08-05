@@ -21,7 +21,6 @@
     let count: undefined | number = undefined;
     let loadedVolume: Volume | undefined | null = undefined;
     let uniqueVolumeId: string;
-	
     $: if (source === 'server' && ($miscSettings.serverUrl || sourceUrlFromParam)) {
         const serverUrlForId = sourceUrlFromParam || $miscSettings.serverUrl;
         uniqueVolumeId = `${serverUrlForId}/${mangaName}/${volumeIdParam}`;
@@ -46,10 +45,20 @@
             loadServerVolume();
         }
 
-        if (uniqueVolumeId && !$volumes?.[uniqueVolumeId]) {
-            initializeVolume(uniqueVolumeId);
-        }
+      
         if (uniqueVolumeId) {
+            if (!$volumes?.[uniqueVolumeId]) {
+                initializeVolume(uniqueVolumeId);
+            }
+            // Store hasMokuro status when a remote volume is first accessed or visited
+            if (source === 'server') {
+                volumes.update(v => {
+                    if (v[uniqueVolumeId]) {
+                        v[uniqueVolumeId].hasMokuro = hasMokuro;
+                    }
+                    return v;
+                });
+            }
             count = startCount(uniqueVolumeId);
         }
         return () => {
@@ -65,6 +74,7 @@
                 const volumeFromStore = $catalog
                     ?.find((item) => item.id === mangaName)
                     ?.manga.find((item) => item.mokuroData?.volume_uuid === volumeIdParam || item.volumeName === volumeIdParam);
+
                 if (volumeFromStore) {
                     // Create a shallow copy to break the direct reactive link to the store
                     // This prevents potential "Assignment to constant variable" errors in the Reader
@@ -123,7 +133,6 @@
             const pageUrl = `${imageBaseUrl}/${page.img_path}`;
             files[page.img_path] = getProxyUrl(pageUrl);
         });
-
         if (uniqueVolumeId) {
             volumes.update(v => {
                 if (!v[uniqueVolumeId]) initializeVolume(uniqueVolumeId);
