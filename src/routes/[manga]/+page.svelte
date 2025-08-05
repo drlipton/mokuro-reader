@@ -11,7 +11,7 @@
 	import { fetchServerVolumeList, getProxyUrl, type ServerVolumeInfo } from '$lib/catalog/server';
 	import { miscSettings } from '$lib/settings';
 	import Loader from '$lib/components/Loader.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { derived } from 'svelte/store';
 	import { CheckCircleSolid, ArrowDownToBracketOutline } from 'flowbite-svelte-icons';
 	import { processFiles } from '$lib/upload';
@@ -24,7 +24,8 @@
 	const mangaName = $page.params.manga;
 	let downloading: { [key: string]: boolean } = {};
 	let extracting = false;
-	
+    let currentFetchId = 0;
+
 	// --- Derived State for UI ---
 	const remoteMangaStats = derived(volumes, ($volumes) => {
 		if (source !== 'server' || !serverVolumes) {
@@ -54,9 +55,8 @@
 	});
 
 	$: manga = $catalog?.find((item) => item.id === $page.params.manga)?.manga.sort((a, b) => 
-		(a.mokuroData?.volume || a.volumeName).localeCompare(b.mokuroData?.volume || b.volumeName, undefined, { numeric: true, sensitivity: 'base' })
+		(a.mokuroData?.volume || a.volumeName || '').localeCompare(b.mokuroData?.volume || b.volumeName || '', undefined, { numeric: true, sensitivity: 'base' })
 	);
-
 
 	// --- Lifecycle ---
 	onMount(() => {
@@ -67,20 +67,34 @@
 		}
 	});
 
+    onDestroy(() => {
+        // When the component is destroyed (navigating away), invalidate the current fetch
+        currentFetchId++;
+    });
+
 	// --- Data Fetching ---
 	async function loadServerVolumes() {
+        currentFetchId++;
+        const thisFetchId = currentFetchId;
 		isLoading = true;
 		error = null;
 		try {
-			serverVolumes = await fetchServerVolumeList($miscSettings.serverUrl, mangaName);
+			const result = await fetchServerVolumeList($miscSettings.serverUrl, mangaName);
+            if (thisFetchId === currentFetchId) {
+			    serverVolumes = result;
+            }
 		} catch (e: any) {
-			error = e.message || 'Failed to load volumes.';
+            if (thisFetchId === currentFetchId) {
+			    error = e.message || 'Failed to load volumes.';
+            }
 		} finally {
-			isLoading = false;
+            if (thisFetchId === currentFetchId) {
+			    isLoading = false;
+            }
 		}
 	}
 
-	// --- Download Logic with Retry using XMLHttpRequest ---
+	// --- Download Logic ---
 	function downloadFileAsBlob(url: string): Promise<Blob> {
 		return new Promise((resolve, reject) => {
 			const xhr = new XMLHttpRequest();

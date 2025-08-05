@@ -77,25 +77,29 @@ volumes.subscribe((volumes) => {
   }
 });
 
-export function initializeVolume(volume: string) {
-  const volumeDefaults = get(settings).volumeDefaults;
+export function initializeVolume(volumeId: string) {
+  const volumesStore = get(volumes);
 
-  if (!volumeDefaults) {
-    updateSetting('volumeDefaults', {
-      singlePageView: false,
-      rightToLeft: true,
-      hasCover: false
-    })
+  // If a record for this volume already exists, do nothing.
+  // Its progress is already being tracked correctly.
+  if (volumesStore[volumeId]) {
+    return;
   }
 
-  const { hasCover, rightToLeft, singlePageView } = volumeDefaults
+  // If it's a new volume, create a default entry for it.
+  const volumeDefaults = get(settings).volumeDefaults;
+  const { hasCover, rightToLeft, singlePageView } = volumeDefaults;
+
   volumes.update((prev) => {
+    // Double-check inside the update to prevent race conditions
+    if (prev[volumeId]) return prev;
+
     return {
       ...prev,
-      [volume]: {
+      [volumeId]: {
         chars: 0,
         completed: false,
-        progress: 0,
+        progress: 1, // Always start new volumes at page 1
         timeReadInMinutes: 0,
         settings: {
           hasCover,
@@ -209,30 +213,38 @@ export const totalStats = derived([volumes, page], ([$volumes, $page]) => {
       minutesRead: 0
     })
   }
+  return undefined;
 })
 
 export const mangaStats = derived([manga, volumes], ([$manga, $volumes]) => {
   if ($manga && $volumes) {
-    return $manga.map((vol) => vol.mokuroData.volume_uuid).reduce(
-      (stats: any, volumeId) => {
-        const timeReadInMinutes = $volumes[volumeId]?.timeReadInMinutes || 0;
-        const chars = $volumes[volumeId]?.chars || 0;
-        const completed = $volumes[volumeId]?.completed || 0;
+    return $manga.reduce(
+      (stats, vol) => {
+        if (vol.mokuroData) {
+            const volumeId = vol.mokuroData.volume_uuid;
+            const timeReadInMinutes = $volumes[volumeId]?.timeReadInMinutes || 0;
+            const chars = $volumes[volumeId]?.chars || 0;
+            const completed = $volumes[volumeId]?.completed || false;
 
-        stats.timeReadInMinutes = stats.timeReadInMinutes + timeReadInMinutes;
-        stats.chars = stats.chars + chars;
-        stats.completed = stats.completed + completed;
-
+            stats.timeReadInMinutes += timeReadInMinutes;
+            stats.chars += chars;
+            if (completed) {
+                stats.completed++;
+            }
+        }
         return stats;
       },
       { timeReadInMinutes: 0, chars: 0, completed: 0 }
     );
   }
+  return undefined;
 });
 
+
 export const volumeStats = derived([volume, volumes], ([$volume, $volumes]) => {
-  if ($volume && $volumes) {
+  if ($volume && $volumes && $volume.mokuroData) {
     const { chars, completed, timeReadInMinutes, progress } = $volumes[$volume.mokuroData.volume_uuid]
     return { chars, completed, timeReadInMinutes, progress }
   }
+  return undefined;
 });

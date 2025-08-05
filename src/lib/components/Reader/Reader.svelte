@@ -16,6 +16,7 @@
 	import ReaderControls from './ReaderControls.svelte';
 	import { getCharCount } from '$lib/util/count-chars';
 	import { Spinner } from 'flowbite-svelte';
+    import { page as pageStore } from '$app/stores';
 
 	export let loadedVolume: Volume;
 	export let volumeSettings: VolumeSettings;
@@ -34,20 +35,35 @@
 	let pagesToLoad = 0;
 
 	// Derived State
-	$: originalPages = loadedVolume?.mokuroData.pages || [];
-	$: pages = $settings.splitDoublePages
-		?
-		originalPages.flatMap((p) => {
-				if (p.img_width && p.img_height && p.img_width > p.img_height) {
+    $: hasMokuro = !!loadedVolume?.mokuroData;
+	$: originalPages = loadedVolume?.mokuroData?.pages;
+
+    $: pages = hasMokuro && originalPages ? (
+        $settings.splitDoublePages
+		? originalPages.flatMap((p) => {
+				if (p.img_width > p.img_height) {
 					const leftPage = { ...p, split: 'left' };
 					const rightPage = { ...p, split: 'right' };
 					return volumeSettings.rightToLeft ? [rightPage, leftPage] : [leftPage, rightPage];
 				}
 				return p;
 		  })
-		: originalPages;
+		: originalPages
+    ) : (
+        // Create a pages array from sorted files for image-only volumes
+        Object.keys(loadedVolume.files)
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+            .map(fileName => ({
+                img_path: fileName,
+                blocks: [],
+                img_height: 0,
+                img_width: 0,
+                version: '',
+            } as Page))
+    );
 
-	$: page = $progress?.[loadedVolume?.mokuroData.volume_uuid || ''] || 1;
+	$: uniqueVolumeId = loadedVolume?.mokuroData?.volume_uuid || `${$pageStore.url.pathname}`; // A fallback ID for image-only
+	$: page = $progress?.[uniqueVolumeId] || 1;
 	$: index = page - 1;
 	$: navAmount =
 		volumeSettings.singlePageView ||
@@ -76,7 +92,7 @@
 	onDestroy(() => {
 		cleanupVerticalScrolling();
 		if (controlsTimeout) clearTimeout(controlsTimeout);
-		fireReaderClosedEvent();
+		if(hasMokuro) fireReaderClosedEvent();
 	});
 
 	beforeNavigate(() => {
@@ -182,7 +198,6 @@
 	function handleIntersect(entries: IntersectionObserverEntry[]) {
 		const intersectingEntries = entries.filter((e) => e.isIntersecting);
 		if (intersectingEntries.length === 0) return;
-
 		const mostVisibleEntry = intersectingEntries.reduce((prev, current) =>
 			prev.intersectionRatio > current.intersectionRatio ? prev : current
 		);
@@ -194,9 +209,9 @@
 			const newPage = mostVisibleIndex + 1;
 			if (page !== newPage) {
 				updateProgress(
-					loadedVolume!.mokuroData.volume_uuid,
+					uniqueVolumeId,
 					newPage,
-					getCharCount(pages, newPage).charCount,
+					hasMokuro ? getCharCount(pages, newPage).charCount : 0,
 					newPage >= pages.length - 1
 				);
 			}
@@ -226,7 +241,7 @@
 
 	function changePage(newPage: number, ignoreTimeout = false) {
 		const end = new Date();
-		const clickDuration = ignoreTimeout ? 0 : end.getTime() - start?.getTime();
+		const clickDuration = ignoreTimeout ? 0 : end.getTime() - (start?.getTime() || 0);
 
 		if (pages && loadedVolume && clickDuration < 200) {
 			if (showSecondPage() && page + 1 === pages.length && newPage > page) {
@@ -234,9 +249,9 @@
 			}
 			const pageClamped = clamp(newPage, 1, pages.length);
 			updateProgress(
-				loadedVolume.mokuroData.volume_uuid,
+				uniqueVolumeId,
 				pageClamped,
-				getCharCount(pages, pageClamped).charCount,
+				hasMokuro ? getCharCount(pages, pageClamped).charCount : 0,
 				pageClamped >= pages.length - 1
 			);
 			if ($settings.verticalScrolling) {
@@ -325,7 +340,7 @@
 	}
 
 	function fireReaderClosedEvent() {
-		if (loadedVolume) {
+		if (loadedVolume && loadedVolume.mokuroData) {
 			const { charCount, lineCount } = getCharCount(pages, page);
 			fireExstaticEvent('mokuro-reader:reader.closed', {
 				title: loadedVolume.mokuroData.title,
@@ -348,11 +363,13 @@
 	on:touchend={$settings.verticalScrolling ? null : handlePointerUp}
 />
 <svelte:head>
-	<title>{loadedVolume?.mokuroData.volume || 'Volume'}</title>
+	<title>{loadedVolume?.volumeName || 'Volume'}</title>
 </svelte:head>
 
 {#if loadedVolume && pages && pages.length > 0}
-	<Cropper />
+	{#if hasMokuro}
+	    <Cropper />
+    {/if}
 
 	<ReaderControls
 		bind:visible={controlsVisible}
@@ -362,6 +379,7 @@
 		isRtl={volumeSettings.rightToLeft}
 		src1={Object.values(loadedVolume?.files)[index]}
 		src2={!volumeSettings.singlePageView ? Object.values(loadedVolume?.files)[index + 1] : undefined}
+        {hasMokuro}
 	/>
 
 	{#if $settings.verticalScrolling}
@@ -378,7 +396,7 @@
 						<MangaPage
 							page={p}
 							src={Object.values(loadedVolume?.files)[
-								originalPages.findIndex((op) => op.img_path === p.img_path)
+								hasMokuro ? originalPages.findIndex((op) => op.img_path === p.img_path) : i
 							]}
 							isVertical={true}
 							pageHalf={p.split}
@@ -417,7 +435,7 @@
 									on:loadcomplete={onPageLoad}
 									page={pages[index]}
 									src={Object.values(loadedVolume?.files)[
-										originalPages.findIndex((op) => op.img_path === pages[index].img_path)
+										hasMokuro ? originalPages.findIndex((op) => op.img_path === pages[index].img_path) : index
 									]}
 									pageHalf={pages[index].split}
 								/>
@@ -427,7 +445,7 @@
 									on:loadcomplete={onPageLoad}
 									page={pages[index + 1]}
 									src={Object.values(loadedVolume?.files)[
-										originalPages.findIndex((op) => op.img_path === pages[index + 1].img_path)
+										hasMokuro ? originalPages.findIndex((op) => op.img_path === pages[index + 1].img_path) : index + 1
 									]}
 									pageHalf={pages[index + 1].split}
 								/>

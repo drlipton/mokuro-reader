@@ -22,7 +22,7 @@
     let loadedVolume: Volume | undefined | null = undefined;
     let uniqueVolumeId: string;
 
-    $: if (source === 'server' && $miscSettings.serverUrl) {
+    $: if (source === 'server' && ($miscSettings.serverUrl || sourceUrlFromParam)) {
         const serverUrlForId = sourceUrlFromParam || $miscSettings.serverUrl;
         uniqueVolumeId = `${serverUrlForId}/${mangaName}/${volumeIdParam}`;
     } else if (source !== 'server') {
@@ -58,10 +58,25 @@
         };
     });
 
-    $: if (source !== 'server' && $catalog) {
-        loadedVolume = $catalog
-            ?.find((item) => item.id === mangaName)
-            ?.manga.find((item) => item.mokuroData?.volume_uuid === volumeIdParam || item.volumeName === volumeIdParam);
+    $: {
+        if (source !== 'server') {
+            // This reactive block now correctly handles the asynchronous loading of the catalog
+            if ($catalog) { // This check ensures we don't run until the catalog store is initialized
+                const volumeFromStore = $catalog
+                    ?.find((item) => item.id === mangaName)
+                    ?.manga.find((item) => item.mokuroData?.volume_uuid === volumeIdParam || item.volumeName === volumeIdParam);
+                
+                if (volumeFromStore) {
+                    // Create a shallow copy to break the direct reactive link to the store
+                    // This prevents potential "Assignment to constant variable" errors in the Reader
+                    loadedVolume = { ...volumeFromStore };
+                } else if ($catalog.length > 0 || ($catalog.length === 0 && get(catalog) !== undefined)) {
+                    // If the catalog has loaded (even if it's empty) and we still didn't find the volume, then it's truly missing.
+                    loadedVolume = null;
+                }
+                // If catalog is still undefined, loadedVolume remains `undefined`, showing the Loader.
+            }
+        }
     }
 
     function getProxyUrl(targetUrl: string): string {
@@ -164,9 +179,9 @@
     <Loader>Loading Volume...</Loader>
 {:else if loadedVolume === null}
     <div class="text-center p-16 text-red-400">
-        <p>Failed to load volume from the server.</p>
+        <p>Failed to load volume.</p>
         <p class="text-sm text-gray-500 mt-2">
-            Please check the server URL, your network connection, and ensure the manga files exist.
+            Please check the server URL or ensure the local files are correct.
         </p>
     </div>
 {:else}

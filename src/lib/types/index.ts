@@ -23,7 +23,7 @@ export type MokuroData = {
 };
 
 export type Volume = {
-	mokuroData?: MokuroData; 
+	mokuroData: MokuroData;
 	volumeName: string;
 	files: Record<string, File | string>;
 };
