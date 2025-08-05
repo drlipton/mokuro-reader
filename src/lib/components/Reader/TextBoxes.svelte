@@ -45,7 +45,6 @@
 			const width = xmax - xmin;
 			const height = ymax - ymin;
 			const area = width * height;
-
 			if (width <= 0 || height <= 0) return null;
 
 			const scaledFontSize =
@@ -75,6 +74,7 @@
 	$: border = $settings.textBoxBorders ? '1px solid red' : 'none';
 	$: contenteditable = $settings.textEditable;
 	$: triggerMethod = $settings.ankiConnectSettings.triggerMethod || 'both';
+
 	async function onUpdateCard(lines: string[]) {
 		if ($settings.ankiConnectSettings.enabled) {
 			const sentence = lines.join(' ');
@@ -82,7 +82,7 @@
 				showCropper(URL.createObjectURL(src), sentence);
 			} else {
 				promptConfirmation('Add image to last created anki card?', async () => {
-					const imageData = await imageToWebp(src, $settings);
+					const imageData = await imageToWebp(src as File, $settings);
 					updateLastCard(imageData, sentence);
 				});
 			}
@@ -116,7 +116,8 @@
 		style:display
 		style:border
 		style:writing-mode={writingMode}
-		role="none"
+		role="button"
+		tabindex="0"
 		on:contextmenu={(e) => onContextMenu(e, lines)}
 		on:dblclick={(e) => onDoubleTap(e, lines)}
 		{contenteditable}
@@ -153,7 +154,6 @@
 		line-height: 1.1em;
 		margin: 0;
 		background-color: rgba(255, 255, 255, 0.8);
-		font-weight: var(--bold);
 		z-index: 11;
 	}
 

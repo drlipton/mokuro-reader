@@ -39,6 +39,7 @@
 
 	// ----------------- Derived State -----------------
 	$: hasMokuro = !!loadedVolume?.mokuroData;
+
 	// FIX: This logic now safely handles both mokuro and image-only volumes.
 	$: pages = (() => {
 		if (hasMokuro && loadedVolume.mokuroData) {
@@ -68,6 +69,7 @@
 		}
 		return [];
 	})();
+	
 	$: originalPages = loadedVolume?.mokuroData?.pages || [];
 	$: uniqueVolumeId = loadedVolume?.mokuroData?.volume_uuid || `${$pageStore.url.pathname}`;
 	$: page = ($progress?.[uniqueVolumeId] as number) || 1;
@@ -78,8 +80,6 @@
 		(volumeSettings.hasCover && !volumeSettings.singlePageView && index === 0)
 			? 1
 			: 2;
-
-	const PAGE_BUFFER = 1;
 
 	// ----------------- Lifecycle -----------------
 	onMount(() => {
@@ -114,16 +114,15 @@
 	$: {
 		const newVisibility = Array(pages.length).fill(false);
 		if ($settings.verticalScrolling) {
-			const startIndex = Math.max(0, index - PAGE_BUFFER);
-			const endIndex = Math.min(pages.length - 1, index + PAGE_BUFFER);
+			const startIndex = Math.max(0, index - 1);
+			const endIndex = Math.min(pages.length - 1, index + 1);
 			for (let i = startIndex; i <= endIndex; i++) {
 				newVisibility[i] = true;
 			}
 		} else {
-			const startIndex = Math.max(0, index - PAGE_BUFFER);
-			const endIndex = Math.min(pages.length - 1, index + 1 + PAGE_BUFFER);
-			for (let i = startIndex; i <= endIndex; i++) {
-				newVisibility[i] = true;
+			newVisibility[index] = true;
+			if (showSecondPage()) {
+				newVisibility[index + 1] = true;
 			}
 		}
 		pageVisibility = newVisibility;
@@ -144,7 +143,7 @@
 		pagesToLoad--;
 		if (pagesToLoad <= 0) {
 			await tick();
-			zoomDefault();
+			// zoomDefault(); // panzoom is removed
 		}
 	}
 
@@ -177,7 +176,6 @@
 		pageElements.forEach((target) => observer.observe(target));
 		verticalScrollingInitialized = true;
 
-		// FIX: Correctly resume scroll position.
 		if (!initialScrollDone) {
 			const currentPageElement = document.querySelector<HTMLElement>(`[data-page-index="${index}"]`);
 			if (currentPageElement) {
@@ -198,7 +196,6 @@
 	function handleIntersect(entries: IntersectionObserverEntry[]) {
 		const intersectingEntries = entries.filter((e) => e.isIntersecting);
 		if (intersectingEntries.length === 0) return;
-
 		const mostVisibleEntry = intersectingEntries.reduce((prev, current) =>
 			prev.intersectionRatio > current.intersectionRatio ? prev : current
 		);
@@ -258,6 +255,7 @@
 				hasMokuro ? getCharCount(pages, pageClamped).charCount : 0,
 				pageClamped >= pages.length - 1
 			);
+
 			if ($settings.verticalScrolling) {
 				const element = document.querySelector<HTMLElement>(`[data-page-index="${pageClamped - 1}"]`);
 				if (element) element.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -408,44 +406,41 @@
 			{/each}
 		</div>
 	{:else}
-		<div class="relative w-full h-full" on:click={handleCentralClick}>
-			<div class="flex" style:background-color={$settings.backgroundColor}>
-				<Panzoom>
+		<div class="reader-container" on:click={handleCentralClick}>
+			<div class="page-view-container" style:background-color={$settings.backgroundColor}>
+				<div
+					class="manga-panel"
+					class:flex-row-reverse={!volumeSettings.rightToLeft}
+					style:filter={`invert(${$settings.invertColors ? 1 : 0})`}
+					on:dblclick={onDoubleTap}
+					role="none"
+				>
 					<div
-						class="flex flex-row"
-						class:flex-row-reverse={!volumeSettings.rightToLeft}
-						style:filter={`invert(${$settings.invertColors ? 1 : 0})`}
-						on:dblclick={onDoubleTap}
-						role="none"
-						id="manga-panel"
-					>
-						<div
-							class="color-temp-overlay"
-							style:background-color={$settings.colorTemperature > 100
-								? 'rgba(255, 165, 0, 0.3)'
-								: 'rgba(0, 191, 255, 0.3)'}
-							style:opacity={Math.abs($settings.colorTemperature - 100) / 100}
-						/>
-						{#key page}
-							{#if pageVisibility[index]}
-								<MangaPage
-									on:loadcomplete={onPageLoad}
-									page={pages[index]}
-									src={loadedVolume.files[pages[index].img_path]}
-									pageHalf={pages[index].split}
-								/>
-							{/if}
-							{#if showSecondPage() && pageVisibility[index + 1]}
-								<MangaPage
-									on:loadcomplete={onPageLoad}
-									page={pages[index + 1]}
-									src={loadedVolume.files[pages[index + 1].img_path]}
-									pageHalf={pages[index + 1].split}
-								/>
-							{/if}
-						{/key}
-					</div>
-				</Panzoom>
+						class="color-temp-overlay"
+						style:background-color={$settings.colorTemperature > 100
+							? 'rgba(255, 165, 0, 0.3)'
+							: 'rgba(0, 191, 255, 0.3)'}
+						style:opacity={Math.abs($settings.colorTemperature - 100) / 100}
+					/>
+					{#key page}
+						{#if pageVisibility[index]}
+							<MangaPage
+								on:loadcomplete={onPageLoad}
+								page={pages[index]}
+								src={loadedVolume.files[pages[index].img_path]}
+								pageHalf={pages[index].split}
+							/>
+						{/if}
+						{#if showSecondPage() && pageVisibility[index + 1]}
+							<MangaPage
+								on:loadcomplete={onPageLoad}
+								page={pages[index + 1]}
+								src={loadedVolume.files[pages[index + 1].img_path]}
+								pageHalf={pages[index + 1].split}
+							/>
+						{/if}
+					{/key}
+				</div>
 			</div>
 
 			<button
@@ -498,5 +493,25 @@
 		mix-blend-mode: multiply;
 		pointer-events: none;
 		z-index: 1;
+	}
+	.reader-container {
+		position: relative;
+		width: 100vw;
+		height: 100vh;
+		overflow: hidden;
+	}
+	.page-view-container {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
+	.manga-panel {
+		display: flex;
+		width: 100%;
+		height: 100%;
+		justify-content: center;
+		align-items: center;
 	}
 </style>

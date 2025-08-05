@@ -2,9 +2,8 @@
 	import type { Page } from '$lib/types';
 	import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
 	import TextBoxes from './TextBoxes.svelte';
-	import { zoomDefault } from '$lib/panzoom';
 	import { settings } from '$lib/settings';
-	import type { PanzoomObject } from '@panzoom/panzoom';
+	import { Spinner } from 'flowbite-svelte';
 
 	export let page: Page;
 	export let src: File | string;
@@ -15,11 +14,9 @@
 	let loading = true;
 	let containerEl: HTMLDivElement;
 	let canvasEl: HTMLCanvasElement;
-	let containerWidth: number;
-	let panzoom: PanzoomObject | null = null;
 	let sourceFile: File | Blob | null = null;
 	let isDestroyed = false;
-	// Flag to track component lifecycle
+	let processedImage: HTMLImageElement | null = null;
 
 	// State for crop offsets and new dimensions
 	let cropOffsetX = 0;
@@ -27,21 +24,51 @@
 	let croppedWidth = page.img_width;
 	let croppedHeight = page.img_height;
 
+	// State for positioning text boxes
+	let scaleFactor = 1;
+	let containerImageOffsetX = 0;
+	let containerImageOffsetY = 0;
+
+	$: if (!loading && canvasEl && processedImage) {
+		renderCanvas(processedImage);
+		calculateScaleAndOffset();
+	}
+
+	function calculateScaleAndOffset() {
+		if (!canvasEl || !containerEl || !croppedWidth || !croppedHeight) return;
+
+		const containerAspectRatio = containerEl.clientWidth / containerEl.clientHeight;
+		const imageAspectRatio = croppedWidth / croppedHeight;
+
+		let renderedWidth;
+		let renderedHeight;
+
+		if (imageAspectRatio > containerAspectRatio) {
+			renderedWidth = containerEl.clientWidth;
+			renderedHeight = renderedWidth / imageAspectRatio;
+		} else {
+			renderedHeight = containerEl.clientHeight;
+			renderedWidth = renderedHeight * imageAspectRatio;
+		}
+
+		scaleFactor = renderedWidth / croppedWidth;
+		containerImageOffsetX = (containerEl.clientWidth - renderedWidth) / 2;
+		containerImageOffsetY = (containerEl.clientHeight - renderedHeight) / 2;
+	}
+
 	onMount(() => {
-		if (src) {
-			handleSource();
-		}
-		if (containerEl) {
-			panzoom = zoomDefault(containerEl);
-		}
+		const process = async () => {
+			if (src) {
+				await handleSource();
+			}
+		};
+		setTimeout(process, 0);
+
+		return () => {
+			isDestroyed = true;
+		};
 	});
-	onDestroy(() => {
-		isDestroyed = true; // Set the flag when component is destroyed
-		if (panzoom) {
-			panzoom.destroy();
-		}
-		console.log(`Unloaded page: ${page.img_path}`);
-	});
+
 	async function handleSource() {
 		if (typeof src === 'string') {
 			try {
@@ -59,15 +86,11 @@
 	}
 
 	async function updateImage(file: File | Blob) {
-		console.log(`Processing page: ${page.img_path}`);
-		loading = true;
-		// Step 1: Create a blob for the correct half of the page if necessary
 		let blobToProcess = file;
 		if (pageHalf) {
 			const image = new Image();
 			const objectUrl = URL.createObjectURL(file);
-			const splitBlob = await new Promise<Blob |
-			null>((resolve) => {
+			const splitBlob = await new Promise<Blob | null>((resolve) => {
 				image.onload = () => {
 					URL.revokeObjectURL(objectUrl);
 					if (isDestroyed) return resolve(null);
@@ -99,12 +122,12 @@
 				};
 				image.src = objectUrl;
 			});
+
 			if (splitBlob) {
 				blobToProcess = splitBlob;
 			}
 		}
 
-		// Step 2: Crop the blob if autoCrop is enabled
 		let finalBlob = blobToProcess;
 		if ($settings.autoCrop) {
 			try {
@@ -121,7 +144,6 @@
 			resetCrop();
 		}
 
-		// Step 3: Render the final blob to the canvas
 		const finalImage = new Image();
 		const finalUrl = URL.createObjectURL(finalBlob);
 		finalImage.onload = async () => {
@@ -130,28 +152,22 @@
 			
 			croppedWidth = finalImage.width;
 			croppedHeight = finalImage.height;
-            await tick(); // Wait for svelte to bind the canvas element
-			renderCanvas(finalImage);
+			processedImage = finalImage;
 			loading = false;
 			await tick();
-			// Ensure DOM is updated with new dimensions
 			dispatch('loadcomplete');
-			console.log(`Finished processing page: ${page.img_path}`);
 		};
 		finalImage.onerror = () => {
 			URL.revokeObjectURL(finalUrl);
 			if (isDestroyed) return;
 			loading = false;
-			dispatch('loadcomplete'); // Dispatch even on error to unblock reader
+			dispatch('loadcomplete');
 		};
 		finalImage.src = finalUrl;
 	}
 
 	function renderCanvas(image: HTMLImageElement) {
-		if (!canvasEl) {
-            console.warn(`renderCanvas called for ${page.img_path}, but canvas element was not ready.`);
-            return;
-        };
+		if (!canvasEl) return;
 		const ctx = canvasEl.getContext('2d');
 		if (!ctx) return;
 
@@ -169,51 +185,51 @@
 		croppedHeight = page.img_height;
 	}
 
-	$: effectiveWidth = pageHalf ? croppedWidth / 2 : croppedWidth;
-	$: aspectRatio = croppedHeight > 0 ? croppedWidth / croppedHeight : 1;
-	$: scaleFactor = isVertical ? containerWidth / croppedWidth : 1;
-	$: containerImageOffsetX = 0;
-	$: containerImageOffsetY = 0;
 </script>
 
 <div
 	bind:this={containerEl}
-	bind:clientWidth={containerWidth}
+	on:resize={calculateScaleAndOffset}
 	draggable="false"
-	class="page-container relative"
-	style:width={isVertical ? '100vw' : `${croppedWidth}px`}
-	style:height={isVertical ? `calc(100vw / ${aspectRatio})` : `${croppedHeight}px`}
+	class="page-container"
 >
-	<canvas
-		bind:this={canvasEl}
-		class="page"
-		style:width={isVertical ? '100vw' : `${croppedWidth}px`}
-		style:height={isVertical ? `calc(100vw / ${aspectRatio})` : `${croppedHeight}px`}
-	/>
-	{#if !loading && sourceFile}
-		<TextBoxes
-			{page}
-			src={sourceFile}
-			{scaleFactor}
-			{cropOffsetX}
-			{cropOffsetY}
-			{containerImageOffsetX}
-			{containerImageOffsetY}
-			{pageHalf}
+	{#if loading}
+        <div class="w-full h-full flex items-center justify-center bg-gray-800">
+            <Spinner />
+        </div>
+    {:else}
+		<canvas
+			bind:this={canvasEl}
+			class="page"
 		/>
+		{#if !loading && sourceFile && page.blocks}
+			<TextBoxes
+				{page}
+				src={sourceFile}
+				{scaleFactor}
+				{cropOffsetX}
+				{cropOffsetY}
+				{containerImageOffsetX}
+				{containerImageOffsetY}
+				{pageHalf}
+			/>
+		{/if}
 	{/if}
 </div>
 
 <style>
+	.page-container {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+	}
 	.page {
 		display: block;
 		max-width: 100%;
 		max-height: 100%;
 		object-fit: contain;
-	}
-	.page-container {
-		display: flex;
-		justify-content: center;
-		align-items: center;
 	}
 </style>

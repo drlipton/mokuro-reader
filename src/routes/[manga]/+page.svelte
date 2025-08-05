@@ -12,7 +12,7 @@
 	import { miscSettings } from '$lib/settings';
 	import Loader from '$lib/components/Loader.svelte';
 	import { onMount } from 'svelte';
-	import { derived } from 'svelte/store';
+	import { derived, get } from 'svelte/store';
 	import { CheckCircleSolid, ArrowDownToBracketOutline } from 'flowbite-svelte-icons';
 	import { processFiles } from '$lib/upload';
 
@@ -24,7 +24,8 @@
 	const mangaName = $page.params.manga;
 	let downloading: { [key: string]: boolean } = {};
 	let extracting = false;
-	
+	let manga: Volume[] | undefined | null = undefined;
+
 	// --- Derived State for UI ---
 	const remoteMangaStats = derived(volumes, ($volumes) => {
 		if (source !== 'server' || !serverVolumes) {
@@ -46,24 +47,33 @@
 		const titles = new Map<string, Set<string>>();
 		if (!$catalog) return titles;
 
-		for (const manga of $catalog) {
-			const volumeNames = new Set(manga.manga.map(v => v.volumeName));
-			titles.set(manga.id, volumeNames);
+		for (const mangaSeries of $catalog) {
+			const volumeNames = new Set(mangaSeries.manga.map(v => v.volumeName));
+			titles.set(mangaSeries.id, volumeNames);
 		}
 		return titles;
 	});
 
-	$: manga = $catalog?.find((item) => item.id === $page.params.manga)?.manga.sort((a, b) => 
-		(a.mokuroData?.volume || a.volumeName).localeCompare(b.mokuroData?.volume || b.volumeName, undefined, { numeric: true, sensitivity: 'base' })
-	);
-
+	$: {
+		if (source !== 'server') {
+			if ($catalog) {
+				const foundManga = $catalog.find((item) => item.id === $page.params.manga)?.manga;
+				if (foundManga) {
+					manga = foundManga.sort((a, b) => 
+						(a.mokuroData?.volume || a.volumeName).localeCompare(b.mokuroData?.volume || b.volumeName, undefined, { numeric: true, sensitivity: 'base' })
+					);
+				} else if ($catalog.length > 0 || ($catalog.length === 0 && get(catalog) !== undefined)) {
+					manga = null;
+				}
+				isLoading = false;
+			}
+		}
+	}
 
 	// --- Lifecycle ---
 	onMount(() => {
 		if (source === 'server') {
 			loadServerVolumes();
-		} else {
-			isLoading = false; 
 		}
 	});
 
