@@ -32,11 +32,13 @@
 	let controlsVisible = true;
 	let controlsTimeout: NodeJS.Timeout;
 	let pagesToLoad = 0;
+
 	// Derived State
 	$: originalPages = loadedVolume?.mokuroData.pages || [];
 	$: pages = $settings.splitDoublePages
-		? originalPages.flatMap((p) => {
-				if (p.img_width > p.img_height) {
+		?
+		originalPages.flatMap((p) => {
+				if (p.img_width && p.img_height && p.img_width > p.img_height) {
 					const leftPage = { ...p, split: 'left' };
 					const rightPage = { ...p, split: 'right' };
 					return volumeSettings.rightToLeft ? [rightPage, leftPage] : [leftPage, rightPage];
@@ -44,6 +46,7 @@
 				return p;
 		  })
 		: originalPages;
+
 	$: page = $progress?.[loadedVolume?.mokuroData.volume_uuid || ''] || 1;
 	$: index = page - 1;
 	$: navAmount =
@@ -52,6 +55,7 @@
 			? 1
 			: 2;
 	const PAGE_BUFFER = 1;
+
 	// --- Lifecycle Hooks ---
 	onMount(() => {
 		if ($settings.defaultFullscreen) {
@@ -60,6 +64,7 @@
 		pageVisibility = Array(pages.length).fill(false);
 		resetControlsTimeout();
 	});
+
 	afterUpdate(() => {
 		if ($settings.verticalScrolling && pages.length > 0 && !verticalScrollingInitialized) {
 			initializeVerticalScrolling();
@@ -67,16 +72,19 @@
 			cleanupVerticalScrolling();
 		}
 	});
+
 	onDestroy(() => {
 		cleanupVerticalScrolling();
 		if (controlsTimeout) clearTimeout(controlsTimeout);
 		fireReaderClosedEvent();
 	});
+
 	beforeNavigate(() => {
 		if (document.fullscreenElement) {
 			document.exitFullscreen();
 		}
 	});
+
 	// --- Reactive Logic ---
 	$: {
 		const newVisibility = Array(pages.length).fill(false);
@@ -109,6 +117,7 @@
 			pagesToLoad = showSecondPage() ? 2 : 1;
 		}
 	}
+
 	// --- Functions ---
 	async function onPageLoad() {
 		pagesToLoad--;
@@ -173,6 +182,7 @@
 	function handleIntersect(entries: IntersectionObserverEntry[]) {
 		const intersectingEntries = entries.filter((e) => e.isIntersecting);
 		if (intersectingEntries.length === 0) return;
+
 		const mostVisibleEntry = intersectingEntries.reduce((prev, current) =>
 			prev.intersectionRatio > current.intersectionRatio ? prev : current
 		);

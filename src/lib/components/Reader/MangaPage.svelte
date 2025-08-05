@@ -12,13 +12,13 @@
 	export let pageHalf: 'left' | 'right' | undefined = undefined;
 
 	const dispatch = createEventDispatcher();
-
 	let loading = true;
 	let containerEl: HTMLDivElement;
 	let canvasEl: HTMLCanvasElement;
 	let containerWidth: number;
 	let panzoom: PanzoomObject | null = null;
 	let sourceFile: File | Blob | null = null;
+	let isDestroyed = false; // Flag to track component lifecycle
 
 	// State for crop offsets and new dimensions
 	let cropOffsetX = 0;
@@ -33,6 +33,14 @@
 		if (containerEl) {
 			panzoom = zoomDefault(containerEl);
 		}
+	});
+
+	onDestroy(() => {
+		isDestroyed = true; // Set the flag when component is destroyed
+		if (panzoom) {
+			panzoom.destroy();
+		}
+		console.log(`Unloaded page: ${page.img_path}`);
 	});
 
 	async function handleSource() {
@@ -54,7 +62,6 @@
 	async function updateImage(file: File | Blob) {
 		console.log(`Processing page: ${page.img_path}`);
 		loading = true;
-
 		// Step 1: Create a blob for the correct half of the page if necessary
 		let blobToProcess = file;
 		if (pageHalf) {
@@ -63,6 +70,7 @@
 			const splitBlob = await new Promise<Blob | null>((resolve) => {
 				image.onload = () => {
 					URL.revokeObjectURL(objectUrl);
+					if (isDestroyed) return resolve(null);
 					const canvas = document.createElement('canvas');
 					const ctx = canvas.getContext('2d');
 					if (!ctx) {
@@ -91,7 +99,6 @@
 				};
 				image.src = objectUrl;
 			});
-
 			if (splitBlob) {
 				blobToProcess = splitBlob;
 			}
@@ -119,15 +126,20 @@
 		const finalUrl = URL.createObjectURL(finalBlob);
 		finalImage.onload = async () => {
 			URL.revokeObjectURL(finalUrl);
+			if (isDestroyed) return; // FIX: Check if component is destroyed
+			
 			croppedWidth = finalImage.width;
 			croppedHeight = finalImage.height;
 			renderCanvas(finalImage);
 			loading = false;
-			await tick(); // Ensure DOM is updated with new dimensions
+			await tick();
+			// Ensure DOM is updated with new dimensions
 			dispatch('loadcomplete');
 			console.log(`Finished processing page: ${page.img_path}`);
 		};
 		finalImage.onerror = () => {
+			URL.revokeObjectURL(finalUrl);
+			if (isDestroyed) return; // FIX: Check if component is destroyed
 			loading = false;
 			dispatch('loadcomplete'); // Dispatch even on error to unblock reader
 		};
@@ -135,6 +147,7 @@
 	}
 
 	function renderCanvas(image: HTMLImageElement) {
+		if (!canvasEl) return; // Guard against null canvas element
 		const ctx = canvasEl.getContext('2d');
 		if (!ctx) return;
 
@@ -152,15 +165,8 @@
 		croppedHeight = page.img_height;
 	}
 
-	onDestroy(() => {
-		if (panzoom) {
-			panzoom.destroy();
-		}
-		console.log(`Unloaded page: ${page.img_path}`);
-	});
-
 	$: effectiveWidth = pageHalf ? croppedWidth / 2 : croppedWidth;
-	$: aspectRatio = croppedWidth / croppedHeight;
+	$: aspectRatio = croppedHeight > 0 ? croppedWidth / croppedHeight : 1;
 	$: scaleFactor = isVertical ? containerWidth / croppedWidth : 1;
 	$: containerImageOffsetX = 0;
 	$: containerImageOffsetY = 0;
