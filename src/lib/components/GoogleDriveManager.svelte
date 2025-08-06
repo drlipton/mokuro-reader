@@ -6,7 +6,6 @@
   import { formatBytes, showSnackbar, uploadFile, promptConfirmation } from '$lib/util';
   import { profiles, volumes } from '$lib/settings';
   import Loader from '$lib/components/Loader.svelte';
-
   // --- GOOGLE API CONFIG ---
   const CLIENT_ID = import.meta.env.VITE_GDRIVE_CLIENT_ID;
   const API_KEY = import.meta.env.VITE_GDRIVE_API_KEY;
@@ -25,7 +24,7 @@
   let google: any;
   let tokenClient: any;
   let accessToken = '';
-  let isReady = false; // True when scripts are loaded and gapi is initialized
+  let isReady = false;
   let isSignedIn = false;
 
   let readerFolderId = '';
@@ -36,12 +35,10 @@
   let completedBytes = 0;
   let totalBytes = 0;
   $: progressPercent = Math.floor((completedBytes / totalBytes) * 100).toString();
-  
+
   let checkInterval: NodeJS.Timeout;
 
-  // --- LIFECYCLE ---
   onMount(() => {
-    // Poll until the Google scripts loaded from app.html are ready
     checkInterval = setInterval(() => {
         if (window.gapi && window.google) {
             clearInterval(checkInterval);
@@ -51,12 +48,11 @@
         }
     }, 100);
   });
-  
+
   onDestroy(() => {
     clearInterval(checkInterval);
   });
-  
-  // --- GOOGLE API LOGIC ---
+
   async function initializeGapiClient() {
     await gapi.client.init({
       apiKey: API_KEY,
@@ -66,9 +62,10 @@
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPES,
-      callback: (resp: any) => { // This is the callback after user signs in
+      callback: (resp: any) => {
         if (resp.error) {
           showSnackbar(`Error: ${resp.error}`);
+          signOut(); // Sign out on error
           throw resp;
         }
         isSignedIn = true;
@@ -78,18 +75,21 @@
       },
     });
 
-    isReady = true; // APIs are now ready for auth calls
+    isReady = true;
 
-    // Check for existing token to auto-sign-in
     const storedToken = localStorage.getItem('gdrive_token');
     if (storedToken) {
         gapi.client.setToken({ access_token: storedToken });
-        if (gapi.client.getToken()?.access_token) {
+        // **CRITICAL FIX**: Verify the token is still valid
+        try {
+            await gapi.client.drive.about.get({ fields: 'user' });
             isSignedIn = true;
             accessToken = storedToken;
             connectDrive();
-        } else {
-            localStorage.removeItem('gdrive_token');
+        } catch (error) {
+            // Token is likely expired, force re-authentication
+            signOut();
+            handleAuthClick();
         }
     }
   }
@@ -99,7 +99,15 @@
         showSnackbar('Google Auth is not ready yet.');
         return;
     }
+    // Always prompt for consent to ensure a refresh token is granted for longer sessions
     tokenClient.requestAccessToken({ prompt: 'consent' });
+  }
+
+  function signOut() {
+    gapi.client.setToken(null);
+    localStorage.removeItem('gdrive_token');
+    isSignedIn = false;
+    accessToken = '';
   }
 
   async function connectDrive() {
@@ -125,14 +133,18 @@
              q: `'${readerFolderId}' in parents and trashed=false`,
              fields: 'files(id, name)'
         });
+
         volumeDataId = filesRes.files?.find((f: any) => f.name === VOLUME_DATA_FILE)?.id || '';
         profilesId = filesRes.files?.find((f: any) => f.name === PROFILES_FILE)?.id || '';
         localStorage.setItem('volumeDataId', volumeDataId);
         localStorage.setItem('profilesId', profilesId);
-        
-    } catch (err) {
+
+    } catch (err: any) {
         showSnackbar('Error connecting to Google Drive.');
         console.error(err);
+        if (err.status === 401 || err.status === 403) {
+            signOut();
+        }
     } finally {
         loadingMessage = '';
     }
@@ -148,7 +160,7 @@
       .setMode(google.picker.DocsViewMode.LIST)
       .setIncludeFolders(true)
       .setParent(readerFolderId);
-    
+
     const picker = new google.picker.PickerBuilder()
       .addView(docsView)
       .setOAuthToken(accessToken)
@@ -166,11 +178,10 @@
         const doc = data[google.picker.Response.DOCUMENTS][0];
         const blob = await downloadFile(doc.id);
         const file = new File([blob], doc.name);
-        
+
         loadingMessage = 'Adding to catalog...';
         await processFiles([file]);
         showSnackbar(`${doc.name} added to your local library!`);
-
       } catch (error) {
         showSnackbar('Failed to process file from Drive.');
         console.error(error);
@@ -180,14 +191,13 @@
     }
   }
 
-  // --- FILE HELPERS ---
   function downloadFile(fileId: string): Promise<Blob> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
       xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
       xhr.responseType = 'blob';
-      
+
       xhr.onprogress = (e) => {
         if (e.lengthComputable) {
           completedBytes = e.loaded;
@@ -274,7 +284,7 @@
         Add zipped manga files to the <span class="font-semibold text-primary-500">{READER_FOLDER}</span> folder in your Google Drive, then add them to your local library here.
     </p>
     <Button color="blue" on:click={createPicker}>Add Manga from Drive</Button>
-    
+
     <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
         <Button color="dark" on:click={() => promptConfirmation('Upload volume data?', () => handleUpload(VOLUME_DATA_FILE, 'volumes', volumeDataId))}>
             Upload Progress
@@ -288,6 +298,9 @@
         <Button color="alternative" disabled={!profilesId} on:click={() => promptConfirmation('Download & overwrite profiles?', () => handleDownload(PROFILES_FILE, profilesId))}>
             Download Profiles
         </Button>
+    </div>
+    <div class="mt-4 text-center">
+        <Button on:click={signOut} color="light">Sign Out</Button>
     </div>
   </div>
 {/if}
