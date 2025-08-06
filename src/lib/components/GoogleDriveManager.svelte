@@ -6,6 +6,7 @@
   import { formatBytes, showSnackbar, uploadFile, promptConfirmation } from '$lib/util';
   import { profiles, volumes } from '$lib/settings';
   import Loader from '$lib/components/Loader.svelte';
+  import { get } from 'svelte/store';
   // --- GOOGLE API CONFIG ---
   const CLIENT_ID = import.meta.env.VITE_GDRIVE_CLIENT_ID;
   const API_KEY = import.meta.env.VITE_GDRIVE_API_KEY;
@@ -35,7 +36,7 @@
   let completedBytes = 0;
   let totalBytes = 0;
   $: progressPercent = Math.floor((completedBytes / totalBytes) * 100).toString();
-
+  
   let checkInterval: NodeJS.Timeout;
 
   onMount(() => {
@@ -48,7 +49,7 @@
         }
     }, 100);
   });
-
+  
   onDestroy(() => {
     clearInterval(checkInterval);
   });
@@ -65,7 +66,7 @@
       callback: (resp: any) => {
         if (resp.error) {
           showSnackbar(`Error: ${resp.error}`);
-          signOut(); // Sign out on error
+          signOut();
           throw resp;
         }
         isSignedIn = true;
@@ -80,14 +81,12 @@
     const storedToken = localStorage.getItem('gdrive_token');
     if (storedToken) {
         gapi.client.setToken({ access_token: storedToken });
-        // **CRITICAL FIX**: Verify the token is still valid
         try {
             await gapi.client.drive.about.get({ fields: 'user' });
             isSignedIn = true;
             accessToken = storedToken;
             connectDrive();
         } catch (error) {
-            // Token is likely expired, force re-authentication
             signOut();
             handleAuthClick();
         }
@@ -99,16 +98,16 @@
         showSnackbar('Google Auth is not ready yet.');
         return;
     }
-    // Always prompt for consent to ensure a refresh token is granted for longer sessions
     tokenClient.requestAccessToken({ prompt: 'consent' });
   }
-
+  
   function signOut() {
     gapi.client.setToken(null);
     localStorage.removeItem('gdrive_token');
     isSignedIn = false;
     accessToken = '';
   }
+
 
   async function connectDrive() {
     loadingMessage = 'Connecting to Drive...';
@@ -131,14 +130,28 @@
 
         const { result: filesRes } = await gapi.client.drive.files.list({
              q: `'${readerFolderId}' in parents and trashed=false`,
-             fields: 'files(id, name)'
+             fields: 'files(id, name, modifiedTime)'
         });
 
-        volumeDataId = filesRes.files?.find((f: any) => f.name === VOLUME_DATA_FILE)?.id || '';
-        profilesId = filesRes.files?.find((f: any) => f.name === PROFILES_FILE)?.id || '';
+        const volumeDataFile = filesRes.files?.find((f: any) => f.name === VOLUME_DATA_FILE);
+        const profilesFile = filesRes.files?.find((f: any) => f.name === PROFILES_FILE);
+
+        volumeDataId = volumeDataFile?.id || '';
+        profilesId = profilesFile?.id || '';
+
         localStorage.setItem('volumeDataId', volumeDataId);
         localStorage.setItem('profilesId', profilesId);
-
+        
+        // Auto-sync on connect if remote is newer
+        if (volumeDataFile) {
+            const remoteModifiedTime = new Date(volumeDataFile.modifiedTime).getTime();
+            const localLastSync = parseInt(localStorage.getItem('lastSyncTime') || '0');
+            if (remoteModifiedTime > localLastSync) {
+                console.log('Sync: Newer data found on Google Drive. Downloading...');
+                handleDownload(VOLUME_DATA_FILE, volumeDataId);
+            }
+        }
+        
     } catch (err: any) {
         showSnackbar('Error connecting to Google Drive.');
         console.error(err);
@@ -178,7 +191,7 @@
         const doc = data[google.picker.Response.DOCUMENTS][0];
         const blob = await downloadFile(doc.id);
         const file = new File([blob], doc.name);
-
+        
         loadingMessage = 'Adding to catalog...';
         await processFiles([file]);
         showSnackbar(`${doc.name} added to your local library!`);
@@ -197,7 +210,7 @@
       xhr.open('GET', `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
       xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
       xhr.responseType = 'blob';
-
+      
       xhr.onprogress = (e) => {
         if (e.lengthComputable) {
           completedBytes = e.loaded;
@@ -225,7 +238,10 @@
         const res = await uploadFile({ accessToken, fileId, metadata, localStorageId, type: JSON_MIME_TYPE });
         if (res.id) {
             showSnackbar(`${fileName} uploaded successfully.`);
-            if (fileName === VOLUME_DATA_FILE) volumeDataId = res.id;
+            if (fileName === VOLUME_DATA_FILE) {
+                volumeDataId = res.id;
+                localStorage.setItem('lastSyncTime', Date.now().toString());
+            }
             if (fileName === PROFILES_FILE) profilesId = res.id;
         }
      } catch(err) {
@@ -242,10 +258,23 @@
     try {
         const { body } = await gapi.client.drive.files.get({ fileId, alt: 'media' });
         const downloaded = JSON.parse(body);
+
         if (fileName === VOLUME_DATA_FILE) {
-            volumes.set({ ...($volumes || {}), ...downloaded });
+            console.log('Sync: Merging volume data...');
+            const localVolumes = get(volumes);
+            const mergedVolumes = { ...localVolumes };
+
+            for (const key in downloaded) {
+                if (!mergedVolumes[key] || (downloaded[key].lastRead || 0) > (mergedVolumes[key].lastRead || 0)) {
+                    mergedVolumes[key] = downloaded[key];
+                }
+            }
+            volumes.set(mergedVolumes);
+            localStorage.setItem('lastSyncTime', Date.now().toString());
+            console.log('Sync: Merge complete.');
         } else if (fileName === PROFILES_FILE) {
-            profiles.set({ ...($profiles || {}), ...downloaded });
+            // Profiles can be overwritten as they are less dynamic
+            profiles.set(downloaded);
         }
         showSnackbar(`${fileName} synced.`);
     } catch(err) {
@@ -284,7 +313,7 @@
         Add zipped manga files to the <span class="font-semibold text-primary-500">{READER_FOLDER}</span> folder in your Google Drive, then add them to your local library here.
     </p>
     <Button color="blue" on:click={createPicker}>Add Manga from Drive</Button>
-
+    
     <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
         <Button color="dark" on:click={() => promptConfirmation('Upload volume data?', () => handleUpload(VOLUME_DATA_FILE, 'volumes', volumeDataId))}>
             Upload Progress
@@ -299,7 +328,7 @@
             Download Profiles
         </Button>
     </div>
-    <div class="mt-4 text-center">
+     <div class="mt-4 text-center">
         <Button on:click={signOut} color="light">Sign Out</Button>
     </div>
   </div>
